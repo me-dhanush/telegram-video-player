@@ -1,0 +1,22 @@
+{
+  "name": "telegram-video-player-nextjs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Next.js lecture player with the existing Telegram streaming backend",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development node server.js",
+    "build": "next build",
+    "start": "cross-env NODE_ENV=production node server.js"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.3",
+    "teleproto": "^1.229.1",
+    "cross-env": "^10.1.0"
+  }
+}

@@ -20,7 +20,10 @@ export async function GET() {
     console.error("Videos API error:", error);
 
     return NextResponse.json(
-      { error: "Failed to load videos" },
+      {
+        error: error.message,
+        stack: error.stack,
+      },
       { status: 500 },
     );
   }

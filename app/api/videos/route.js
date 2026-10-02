@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { startTelegram } from "../../../../src/telegram/telegramClient";
+import { startTelegram } from "@/src/telegram/telegramClient";
 
 let telegramPromise = null;
 

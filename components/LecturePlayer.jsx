@@ -111,6 +111,10 @@ export default function LecturePlayer() {
     }
 
     useEffect(() => {
+          if (window.Telegram?.WebApp) {
+            window.Telegram.WebApp.expand();
+          }
+
         const video = videoRef.current;
         if (!video) return;
 

@@ -46,7 +46,7 @@ function parseTimestamp(value) {
   return null;
 }
 
-export default function NotesPanel({ videoRef, currentTime }) {
+export default function NotesPanel({ videoRef, currentTime, onClose }) {
   const [notes, setNotes] = useState([]);
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingTimestamp, setEditingTimestamp] = useState("");
@@ -67,6 +67,56 @@ export default function NotesPanel({ videoRef, currentTime }) {
       console.error("Could not load notes:", error);
     }
   }, []);
+
+useEffect(() => {
+  function handleKeyboardShortcuts(event) {
+    // Ctrl + Enter = save
+    if (event.ctrlKey && event.key === "Enter") {
+      event.preventDefault();
+
+      if (editingIndex !== null) {
+        saveEditedNote();
+      } else if (editorOpen) {
+        saveNewNote();
+      }
+
+      return;
+    }
+
+    // Don't trigger other shortcuts while typing
+    const tagName = event.target.tagName;
+
+    if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") {
+      return;
+    }
+
+    // N = add timestamp
+    if (event.key.toLowerCase() === "n") {
+      event.preventDefault();
+      addNoteAtCurrentTime();
+    }
+
+    // Escape = close editor
+    if (event.key === "Escape" && editorOpen) {
+      event.preventDefault();
+      setEditorOpen(false);
+    }
+  }
+
+  window.addEventListener("keydown", handleKeyboardShortcuts);
+
+  return () => {
+    window.removeEventListener("keydown", handleKeyboardShortcuts);
+  };
+}, [
+  editorOpen,
+  editingIndex,
+  timestamp,
+  noteText,
+  editingTimestamp,
+  editingText,
+  notes,
+]);
 
   function saveNotes(nextNotes) {
     localStorage.setItem(
@@ -233,6 +283,7 @@ return (
 
         <button
           type="button"
+          onClick={onClose}
           className="text-white hover:text-red-400 transition-colors cursor-pointer"
           title="Close notes"
         >

@@ -27,6 +27,23 @@ async function startTelegram() {
   console.log("✅ Found PW Classes");
   console.log("Group ID:", pwClasses.id.toString());
 
+  const forumTopics = await client.invoke(
+    new Api.messages.GetForumTopics({
+      peer: pwClasses.entity,
+      q: "",
+      offsetDate: 0,
+      offsetId: 0,
+      offsetTopic: 0,
+      limit: 100,
+    }),
+  );
+
+  console.log("📚 Forum topics found:", forumTopics.topics.length);
+
+  forumTopics.topics.forEach((topic) => {
+    console.log("📁 TOPIC:", topic.id, topic.title);
+  });
+
   const messages = await client.getMessages(pwClasses.entity, { ids: [19] });
 
   const message = messages[0];
@@ -49,12 +66,56 @@ async function startTelegram() {
     thumbSize: "",
   });
 
+function createVideoLocation(message) {
+  const document = message.media.document;
+
+  return new Api.InputDocumentFileLocation({
+    id: document.id,
+    accessHash: document.accessHash,
+    fileReference: document.fileReference,
+    thumbSize: "",
+  });
+}
+
   console.log("✅ Video location ready");
+
+  const allMessages = await client.getMessages(pwClasses.entity, {
+    limit: 100,
+  });
+
+const videos = allMessages
+  .filter(
+    (message) =>
+      message &&
+      message.media &&
+      message.media.document &&
+      message.media.document.mimeType &&
+      message.media.document.mimeType.startsWith("video/"),
+  )
+  .map((message) => {
+    const topicId = message.replyTo?.replyToMsgId;
+
+    const topic = forumTopics.topics.find((topic) => topic.id === topicId);
+
+    console.log("VIDEO TOPIC:", message.id, topicId, topic?.title);
+
+    return {
+      id: message.id,
+      name: message.message || `Video ${message.id}`,
+      topicId: topicId,
+      topicName: topic?.title || `Topic ${topicId}`,
+      videoDocument: message.media.document,
+      videoLocation: createVideoLocation(message),
+    };
+  });
+
+  console.log(`🎥 Found ${videos.length} videos in recent messages`);
 
   return {
     client,
     videoDocument,
     videoLocation,
+    videos,
   };
 }
 

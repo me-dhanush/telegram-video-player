@@ -19,7 +19,29 @@ async function main() {
     const telegram = await startTelegram();
 
     // Keep the existing Telegram streaming endpoint unchanged.
-    app.get("/video", createVideoStreamHandler(telegram));
+    app.get("/video", (req, res) => {
+      const messageId = Number(req.query.messageId);
+
+      if (!messageId) {
+        return createVideoStreamHandler(telegram)(req, res);
+      }
+
+      const video = telegram.videos.find((video) => video.id === messageId);
+
+      if (!video) {
+        return res.status(404).send("Video not found");
+      }
+
+      createVideoStreamHandler({
+        client: telegram.client,
+        videoDocument: video.videoDocument,
+        videoLocation: video.videoLocation,
+      })(req, res);
+    });
+
+    app.get("/api/videos", (req, res) => {
+      res.json(telegram.videos);
+    });
 
     // Let Next.js handle the React application.
     app.use((req, res) => handle(req, res));

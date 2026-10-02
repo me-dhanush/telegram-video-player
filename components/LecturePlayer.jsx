@@ -124,7 +124,7 @@ export default function LecturePlayer() {
 const searchParams = new URLSearchParams(window.location.search);
 const messageId = searchParams.get("messageId");
 
-video.src = messageId ? `/video?messageId=${messageId}` : "/video";
+video.src = messageId ? `/api/video?messageId=${messageId}` : "/api/video";
 
 fetch("/api/videos")
   .then((response) => response.json())

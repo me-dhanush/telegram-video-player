@@ -114,7 +114,7 @@ export default function LecturePlayer() {
         const video = videoRef.current;
         if (!video) return;
 
-        video.src = "/video";
+        video.src = "https://myth-let-hazards-capable.trycloudflare.com/video";
 
         const handlePlay = () => {
             setIsPlaying(true);

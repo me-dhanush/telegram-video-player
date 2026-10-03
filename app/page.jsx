@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Button, Drawer, Label, SearchField } from "@heroui/react";
 
 export default function VideosPage() {
   const router = useRouter();
+
   const [videos, setVideos] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
@@ -14,7 +16,6 @@ export default function VideosPage() {
       .then((response) => response.json())
       .then((data) => {
         setVideos(data);
-
         if (data.length > 0) {
           setSelectedTopicId(data[0].topicId);
         }
@@ -33,7 +34,6 @@ export default function VideosPage() {
     }
 
     groups[topicId].push(video);
-
     return groups;
   }, {});
 
@@ -45,350 +45,321 @@ export default function VideosPage() {
     selectedTopicVideos[0]?.topicName || "Select a topic";
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#e7f3fc",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        fontFamily: "Arial, Helvetica, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          height: "calc(100vh - 0px)",
-          background: "#ffffff",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 8px 30px rgba(0, 120, 200, 0.15)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            height: "64px",
-            flexShrink: 0,
-            background: "#ffffff",
-            borderBottom: "1px solid #e1e8ed",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 20px",
-            color: "#202b33",
-          }}
-        >
-          {/* App title */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "18px",
-                fontWeight: "700",
-                letterSpacing: "-0.2px",
-              }}
-            >
-              Classes
-            </div>
-          </div>
-
-          {/* Search */}
-          <div
-            style={{
-              position: "relative",
-              width: "250px",
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              style={{
-                position: "absolute",
-                left: "11px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: "18px",
-                height: "18px",
-                color: "#8b9aa6",
-                pointerEvents: "none",
-              }}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-              />
-            </svg>
-
-            <input
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Search lectures..."
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "9px 12px 9px 34px",
-                border: "1px solid #dce5eb",
-                borderRadius: "8px",
-                outline: "none",
-                background: "#f7f9fb",
-                color: "#202b33",
-                fontSize: "13px",
-              }}
-            />
-          </div>
-        </div>
-
+    <main className="h-screen bg-gray-100">
+      {/* Main application */}
+      <div className="h-full bg-white flex flex-col">
         {/* Main content */}
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            minHeight: 0,
-          }}
-        >
-          {/* Topics */}
-          <div
-            style={{
-              width: "260px",
-              flexShrink: 0,
-              overflowY: "auto",
-              background: "#f5f9fc",
-              borderRight: "1px solid #dceaf2",
-              padding: "8px 0",
-            }}
-          >
-            <div
-              style={{
-                padding: "10px 18px 8px",
-                color: "#8b9aa6",
-                fontSize: "11px",
-                fontWeight: "700",
-                textTransform: "uppercase",
-                letterSpacing: "0.6px",
-              }}
-            >
-              Subjects
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col md:flex-row">
+          <aside className="hidden md:flex w-72 gap-2 rounded-e-3xl p-2 shrink-0 border-r bg-slate-100 text-slate-700 flex-col min-h-0">
+            {/* Sidebar header */}
+
+            <div className="px-5 py-3 flex gap-2 items-center">
+              <h2 className="text-lg font-semibold">Lectures</h2>
             </div>
 
-            {topicGroups.map(([topicId, topicVideos]) => {
-              const topicName = topicVideos[0]?.topicName || `Topic ${topicId}`;
+            {/* Search */}
 
-              const isSelected = String(selectedTopicId) === String(topicId);
+            <div className="px-4 pb-5">
+              <SearchField
+                fullWidth
+                name="search"
+                value={searchText}
+                onChange={setSearchText}
+              >
+                <SearchField.Group>
+                  <SearchField.SearchIcon />
 
-              return (
-                <button
-                  key={topicId}
-                  onClick={() => setSelectedTopicId(topicId)}
-                  style={{
-                    width: "calc(100% - 12px)",
-                    margin: "2px 6px",
-                    padding: "12px 12px",
-                    border: "none",
-                    borderRadius: "9px",
-                    background: isSelected ? "#dff2fc" : "transparent",
-                    color: isSelected ? "#168ac5" : "#526572",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "background 0.15s ease, color 0.15s ease",
-                  }}
-                  onMouseEnter={(event) => {
-                    if (!isSelected) {
-                      event.currentTarget.style.background = "#eaf4f9";
-                    }
-                  }}
-                  onMouseLeave={(event) => {
-                    if (!isSelected) {
-                      event.currentTarget.style.background = "transparent";
-                    }
-                  }}
+                  <SearchField.Input placeholder="Search..." />
+
+                  <SearchField.ClearButton />
+                </SearchField.Group>
+              </SearchField>
+            </div>
+
+            {/* Categories */}
+
+            <div className="border-t px-4 pt-5">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs text-gray-400 uppercase">
+                  Subjects
+                </span>
+              </div>
+
+              {/* Subjects */}
+
+              <div className="space-y-1">
+                {topicGroups.map(([topicId, topicVideos]) => {
+                  const topicName =
+                    topicVideos[0]?.topicName || `Topic ${topicId}`;
+
+                  const isSelected =
+                    String(selectedTopicId) === String(topicId);
+
+                  return (
+                    <button
+                      key={topicId}
+                      onClick={() => setSelectedTopicId(topicId)}
+                      className={`w-full cursor-pointer flex items-center gap-3 px-3 py-2.5 rounded-lg text-left ${
+                        isSelected
+                          ? "bg-sky-400 text-white"
+                          : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {/* Folder icon */}
+
+                      <span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="size-6"
+                        >
+                          <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15ZM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146Z" />
+                        </svg>
+                      </span>
+
+                      {/* Topic name */}
+
+                      <span className="flex-1 truncate text-sm">
+                        {topicName}
+                      </span>
+
+                      {/* Arrow */}
+
+                      <span>›</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Latest lectures */}
+
+            <div className="border-t mt-5 px-4 pt-5 flex-1 overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs text-gray-400 uppercase">
+                  Latest Lectures
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {videos.slice(0, 10).map((video) => (
+                  <button
+                    key={video.id}
+                    onClick={() => router.push(`/player?messageId=${video.id}`)}
+                    className="w-full cursor-pointer flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
+                  >
+                    {/* File icon */}
+
+                    <div className="w-9 h-9 shrink-0 rounded-lg bg-gray-100 flex items-center justify-center">
+                      📄
+                    </div>
+
+                    {/* Lecture name */}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-gray-700 truncate">
+                        {video.name}
+                      </div>
+
+                      <div className="text-[10px] text-gray-400 mt-1">
+                        Lecture
+                      </div>
+                    </div>
+
+                    {/* More */}
+
+                    <span className="text-gray-400">⋯</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
+          {/* Mobile header */}
+          <div className="md:hidden border-b px-4 py-3 flex items-center gap-3">
+            <Drawer>
+              <Button isIconOnly variant="secondary">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="size-6"
                 >
-                  {/* Topic information */}
-                  <div
-                    style={{
-                      fontSize: "14px",
-                      fontWeight: isSelected ? "700" : "500",
-                      lineHeight: "1.4",
-                      whiteSpace: "normal",
-                      overflowWrap: "break-word",
-                    }}
-                  >
-                    {topicName}
-                  </div>
+                  <path
+                    fillRule="evenodd"
+                    d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </Button>
 
-                  <div
-                    style={{
-                      marginTop: "4px",
-                      fontSize: "11px",
-                      color: isSelected ? "#168ac5" : "#8b9aa6",
-                    }}
-                  >
-                    {topicVideos.length} lectures
-                  </div>
+              <Drawer.Backdrop variant="opaque">
+                <Drawer.Content placement="left">
+                  <Drawer.Dialog className="w-72">
+                    <Drawer.CloseTrigger />
 
-                  {/* Selected indicator */}
-                  {isSelected && (
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "3px",
-                        marginTop: "9px",
-                        borderRadius: "3px",
-                        background: "#229ed9",
-                      }}
-                    />
-                  )}
-                </button>
-              );
-            })}
+                    <Drawer.Header>
+                      <Drawer.Heading>Lectures</Drawer.Heading>
+                    </Drawer.Header>
+
+                    <Drawer.Body>
+                      {/* Search */}
+                      <div className="pb-5">
+                        <SearchField
+                          fullWidth
+                          name="search"
+                          value={searchText}
+                          onChange={setSearchText}
+                        >
+                          <SearchField.Group>
+                            <SearchField.SearchIcon />
+                            <SearchField.Input placeholder="Search..." />
+                            <SearchField.ClearButton />
+                          </SearchField.Group>
+                        </SearchField>
+                      </div>
+
+                      {/* Subjects */}
+                      <div className="border-t pt-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="text-xs text-gray-400 uppercase">
+                            Subjects
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          {topicGroups.map(([topicId, topicVideos]) => {
+                            const topicName =
+                              topicVideos[0]?.topicName || `Topic ${topicId}`;
+
+                            const isSelected =
+                              String(selectedTopicId) === String(topicId);
+
+                            return (
+                              <button
+                                key={topicId}
+                                onClick={() => setSelectedTopicId(topicId)}
+                                className={`w-full cursor-pointer flex items-center gap-3 px-3 py-2.5 rounded-lg text-left ${
+                                  isSelected
+                                    ? "bg-sky-400 text-white"
+                                    : "text-gray-600 hover:bg-gray-50"
+                                }`}
+                              >
+                                <span>
+                                  {/* folder icon */}
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    className="size-6"
+                                  >
+                                    <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15ZM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146Z" />
+                                  </svg>
+                                </span>
+
+                                <span className="flex-1 truncate text-sm">
+                                  {topicName}
+                                </span>
+
+                                <span>›</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Latest lectures */}
+                      <div className="border-t mt-5 pt-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="text-xs text-gray-400 uppercase">
+                            Latest Lectures
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {videos.slice(0, 10).map((video) => (
+                            <button
+                              key={video.id}
+                              onClick={() =>
+                                router.push(`/player?messageId=${video.id}`)
+                              }
+                              className="w-full cursor-pointer flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
+                            >
+                              <div className="w-9 h-9 shrink-0 rounded-lg bg-gray-100 flex items-center justify-center">
+                                📄
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-gray-700 truncate">
+                                  {video.name}
+                                </div>
+
+                                <div className="text-[10px] text-gray-400 mt-1">
+                                  Lecture
+                                </div>
+                              </div>
+
+                              <span className="text-gray-400">⋯</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </Drawer.Body>
+                  </Drawer.Dialog>
+                </Drawer.Content>
+              </Drawer.Backdrop>
+            </Drawer>
+
+            <h2 className="font-semibold truncate">{selectedTopicName}</h2>
           </div>
 
           {/* Videos */}
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-              overflowY: "auto",
-              background: "#f7fbfe",
-            }}
-          >
-            {/* Selected topic heading */}
-            <div
-              style={{
-                padding: "18px 20px 12px",
-                background: "#f7fbfe",
-                color: "#526572",
-                fontSize: "16px",
-                fontWeight: "700",
-                position: "sticky",
-                top: 0,
-                zIndex: 1,
-                borderBottom: "1px solid #e5eef4",
-              }}
-            >
+          <section className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+            {/* Selected topic */}
+            <div className="hidden md:block border-b px-6 py-4 font-semibold">
               {selectedTopicName}
             </div>
 
-            {/* Videos */}
-            {[...selectedTopicVideos]
-              .sort((firstVideo, secondVideo) => firstVideo.id - secondVideo.id)
-              .map((video, index) => (
-                <button
-                  key={video.id}
-                  onClick={() => router.push(`/player?messageId=${video.id}`)}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "14px",
-                    padding: "14px 18px",
-                    border: "none",
-                    borderBottom: "1px solid #e5eef4",
-                    background: "#ffffff",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "background 0.15s ease",
-                  }}
-                  onMouseEnter={(event) => {
-                    event.currentTarget.style.background = "#eef8ff";
-                  }}
-                  onMouseLeave={(event) => {
-                    event.currentTarget.style.background = "#ffffff";
-                  }}
-                >
-                  {/* Lecture number */}
-                  <div
-                    style={{
-                      width: "46px",
-                      height: "46px",
-                      minWidth: "46px",
-                      borderRadius: "50%",
-                      background: "#dff2fc",
-                      color: "#168ac5",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "14px",
-                      fontWeight: "700",
-                    }}
+            {/* Video list */}
+            <div>
+              {[...selectedTopicVideos]
+                .sort(
+                  (firstVideo, secondVideo) => firstVideo.id - secondVideo.id,
+                )
+                .map((video, index) => (
+                  <button
+                    key={video.id}
+                    onClick={() => router.push(`/player?messageId=${video.id}`)}
+                    className="w-full cursor-pointer flex items-center gap-4 px-6 py-4 border-b text-left hover:bg-gray-50"
                   >
-                    {index + 1}
-                  </div>
-
-                  {/* Lecture info */}
-                  <div
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: "#202b33",
-                        fontSize: "15px",
-                        fontWeight: "500",
-                        lineHeight: "1.4",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {video.name}
+                    {/* Lecture number */}
+                    <div className="w-10 h-10 shrink-0 rounded-full bg-gray-200 flex items-center justify-center">
+                      {index + 1}
                     </div>
 
-                    <div
-                      style={{
-                        marginTop: "4px",
-                        color: "#8b9aa6",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Tap to play
+                    {/* Lecture information */}
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate font-medium">{video.name}</div>
+
+                      <div className="text-sm text-gray-500 mt-1">
+                        Tap to play
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Play button */}
-                  <div
-                    style={{
-                      width: "34px",
-                      height: "34px",
-                      minWidth: "34px",
-                      borderRadius: "50%",
-                      background: "#229ed9",
-                      color: "#ffffff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "13px",
-                    }}
-                  >
-                    ▶
-                  </div>
-                </button>
-              ))}
+                    {/* Play button */}
+                    <div className="w-9 h-9 shrink-0 rounded-full bg-gray-200 flex items-center justify-center">
+                      ▶
+                    </div>
+                  </button>
+                ))}
 
-            {selectedTopicVideos.length === 0 && (
-              <div
-                style={{
-                  padding: "50px 20px",
-                  textAlign: "center",
-                  color: "#8b9aa6",
-                }}
-              >
-                No lectures found
-              </div>
-            )}
-          </div>
+              {selectedTopicVideos.length === 0 && (
+                <div className="p-12 text-center text-gray-500">
+                  No lectures found
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </main>

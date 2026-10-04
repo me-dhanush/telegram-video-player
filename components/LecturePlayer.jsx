@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import NotesPanel from "./NotesPanel";
+import { Slider } from "@heroui/react";
+import VolumeSlider from "./VolumeSlider";
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds)) return "00:00";
@@ -42,7 +44,9 @@ export default function LecturePlayer() {
   const [progress, setProgress] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [notesVisible, setNotesVisible] = useState(true);
+  const [notesVisible, setNotesVisible] = useState(false);
+  const [volume, setVolume] = useState(100);
+  const [isMuted, setIsMuted] = useState(false);
 
   function togglePlay() {
     const video = videoRef.current;
@@ -65,6 +69,32 @@ export default function LecturePlayer() {
       0,
       Math.min(video.duration || Infinity, video.currentTime + seconds),
     );
+  }
+
+  function handleVolumeChange(event) {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const newVolume = Number(event.target.value);
+
+    video.volume = newVolume / 100;
+    setVolume(newVolume);
+
+    if (newVolume === 0) {
+      video.muted = true;
+      setIsMuted(true);
+    } else {
+      video.muted = false;
+      setIsMuted(false);
+    }
+  }
+
+  function toggleMute() {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
   }
 
   function updateProgress() {
@@ -93,11 +123,45 @@ export default function LecturePlayer() {
     try {
       if (!document.fullscreenElement) {
         await shellRef.current?.requestFullscreen();
+
+        if (screen.orientation?.lock) {
+          try {
+            await screen.orientation.lock("landscape");
+          } catch (error) {
+            console.log("Orientation lock failed:", error);
+          }
+        }
       } else {
         await document.exitFullscreen();
       }
     } catch (error) {
       console.error("Fullscreen failed:", error);
+    }
+  }
+
+  async function handleMobileTap() {
+    const video = videoRef.current;
+
+    if (!video) return;
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (!isMobile) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await shellRef.current?.requestFullscreen();
+      }
+
+      if (screen.orientation?.lock) {
+        await screen.orientation.lock("landscape");
+      }
+
+      if (video.paused) {
+        await video.play();
+      }
+    } catch (error) {
+      console.log("Mobile fullscreen/orientation failed:", error);
     }
   }
 
@@ -121,24 +185,24 @@ export default function LecturePlayer() {
     const video = videoRef.current;
     if (!video) return;
 
-const searchParams = new URLSearchParams(window.location.search);
-const messageId = searchParams.get("messageId");
+    const searchParams = new URLSearchParams(window.location.search);
+    const messageId = searchParams.get("messageId");
 
-video.src = messageId ? `/api/video?messageId=${messageId}` : "/api/video";
+    video.src = messageId ? `/api/video?messageId=${messageId}` : "/api/video";
 
-fetch("/api/videos")
-  .then((response) => response.json())
-  .then((videos) => {
-    const selectedMessageId = Number(messageId) || 19;
+    fetch("/api/videos")
+      .then((response) => response.json())
+      .then((videos) => {
+        const selectedMessageId = Number(messageId) || 19;
 
-    const selectedVideo = videos.find(
-      (video) => video.id === selectedMessageId,
-    );
+        const selectedVideo = videos.find(
+          (video) => video.id === selectedMessageId,
+        );
 
-    if (selectedVideo) {
-      setLectureTitle(selectedVideo.name);
-    }
-  });
+        if (selectedVideo) {
+          setLectureTitle(selectedVideo.name);
+        }
+      });
 
     const handlePlay = () => {
       setIsPlaying(true);
@@ -165,13 +229,19 @@ fetch("/api/videos")
       showVideoControls();
     };
 
+    const handleVideoTap = (event) => {
+      if (event.target !== video) return;
+
+      setControlsVisible((visible) => !visible);
+    };
+
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
     video.addEventListener("ended", handleEnded);
     video.addEventListener("timeupdate", updateProgress);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
     videoColumnRef.current?.addEventListener("mousemove", handleMouseMove);
-
+    videoColumnRef.current?.addEventListener("click", handleVideoTap);
     return () => {
       video.removeEventListener("play", handlePlay);
       video.removeEventListener("pause", handlePause);
@@ -179,6 +249,7 @@ fetch("/api/videos")
       video.removeEventListener("timeupdate", updateProgress);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       videoColumnRef.current?.removeEventListener("mousemove", handleMouseMove);
+      videoColumnRef.current?.removeEventListener("click", handleVideoTap);
       clearTimeout(controlsTimeoutRef.current);
     };
   }, []);
@@ -211,11 +282,11 @@ fetch("/api/videos")
         togglePlay();
       }
 
-      if (event.key === "ArrowLeft") {
+      if (event.key === "ArrowLeft" || event.key === "4") {
         seekBy(-10);
       }
 
-      if (event.key === "ArrowRight") {
+      if (event.key === "ArrowRight" || event.key === "6") {
         seekBy(10);
       }
 
@@ -496,32 +567,55 @@ fetch("/api/videos")
                 </div>
                 {/* Bottom buttons */}
                 <div className="flex items-center justify-between px-1.5">
-                  <div className="flex items-center">
+                  <div className="flex items-center group">
                     <button
                       id="muteBtn"
                       className="w-11 h-11 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:scale-90 transition"
                       type="button"
+                      onClick={toggleMute}
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="size-6"
-                      >
-                        <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 0 0 1.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06ZM18.584 5.106a.75.75 0 0 1 1.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 0 1-1.06-1.06 8.25 8.25 0 0 0 0-11.668.75.75 0 0 1 0-1.06Z"></path>
-                        <path d="M15.932 7.757a.75.75 0 0 1 1.061 0 6 6 0 0 1 0 8.486.75.75 0 0 1-1.06-1.061 4.5 4.5 0 0 0 0-6.364.75.75 0 0 1 0-1.06Z"></path>
-                      </svg>
+                      {isMuted ? (
+                        // Muted
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          class="size-6"
+                        >
+                          <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 0 0 1.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06ZM17.78 9.22a.75.75 0 1 0-1.06 1.06L18.44 12l-1.72 1.72a.75.75 0 1 0 1.06 1.06l1.72-1.72 1.72 1.72a.75.75 0 1 0 1.06-1.06L20.56 12l1.72-1.72a.75.75 0 1 0-1.06-1.06l-1.72 1.72-1.72-1.72Z" />
+                        </svg>
+                      ) : (
+                        // Normal
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="size-6"
+                        >
+                          <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 0 0 1.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06ZM18.584 5.106a.75.75 0 0 1 1.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 0 1-1.06-1.06 8.25 8.25 0 0 0 0-11.668.75.75 0 0 1 0-1.06Z" />
+                          <path d="M15.932 7.757a.75.75 0 0 1 1.061 0 6 6 0 0 1 0 8.486.75.75 0 0 1-1.06-1.061 4.5 4.5 0 0 0 0-6.364.75.75 0 0 1 0-1.06Z" />
+                        </svg>
+                      )}
                     </button>
-                    <div className="flex items-center group">
-                      <input
-                        id="volBar"
-                        type="range"
-                        min="0"
-                        max="100"
-                        defaultValue="100"
-                        className="w-0 opacity-0 group-hover:w-[52px] group-hover:opacity-100 transition-all"
-                      />
-                    </div>
+
+                    <VolumeSlider
+                      value={volume}
+                      onChange={(newVolume) => {
+                        const video = videoRef.current;
+                        if (!video) return;
+
+                        video.volume = newVolume / 100;
+                        setVolume(newVolume);
+
+                        if (newVolume === 0) {
+                          video.muted = true;
+                          setIsMuted(true);
+                        } else {
+                          video.muted = false;
+                          setIsMuted(false);
+                        }
+                      }}
+                    />
                   </div>
                   <div className="flex items-center">
                     <button

@@ -135,8 +135,8 @@ export default function VideosPage() {
 
             {/* Latest lectures */}
 
-            <div className="border-t mt-5 px-4 pt-5 flex-1 overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
+            <div className="border-t mt-5 px-2 pt-5 flex-1 overflow-y-auto">
+              <div className="flex items-center justify-between ms-3 mb-4">
                 <span className="text-xs text-gray-400 uppercase">
                   Latest Lectures
                 </span>
@@ -147,7 +147,7 @@ export default function VideosPage() {
                   <button
                     key={video.id}
                     onClick={() => router.push(`/player?messageId=${video.id}`)}
-                    className="w-full cursor-pointer flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
+                    className="w-full cursor-pointer flex items-center gap-3 p-2 rounded-lg bg-white hover:bg-gray-50 text-left"
                   >
                     {/* File icon */}
 

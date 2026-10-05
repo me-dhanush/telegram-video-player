@@ -5,7 +5,7 @@
   "description": "Next.js lecture player with the existing Telegram streaming backend",
   "scripts": {
     "dev": "cross-env NODE_ENV=development node server.js",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "cross-env NODE_ENV=production node server.js",
     "rename-videos": "node src/telegram/videoRenamer.js"
   },

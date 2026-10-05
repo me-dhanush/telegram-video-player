@@ -79,9 +79,13 @@ function createVideoLocation(message) {
 
   console.log("✅ Video location ready");
 
-  const allMessages = await client.getMessages(pwClasses.entity, {
-    limit: 100,
-  });
+const allMessages = [];
+
+for await (const message of client.iterMessages(pwClasses.entity)) {
+  allMessages.push(message);
+}
+
+console.log(`📨 Total Telegram messages fetched: ${allMessages.length}`);
 
 const videos = allMessages
   .filter(
@@ -116,6 +120,7 @@ const videos = allMessages
     videoDocument,
     videoLocation,
     videos,
+    telegramChatId: pwClasses.id.toString(),
   };
 }
 

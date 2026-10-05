@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { startTelegram } from "@/src/telegram/telegramClient";
+import { prisma } from "@/lib/prisma";
 
 let telegramPromise = null;
 
@@ -14,6 +15,10 @@ async function getTelegram() {
 export async function GET() {
   try {
     const telegram = await getTelegram();
+    const videosInDatabase = await prisma.video.findMany();
+
+    console.log("✅ Prisma connected!");
+    console.log("Videos in database:", videosInDatabase.length);
 
     return NextResponse.json(telegram.videos);
   } catch (error) {

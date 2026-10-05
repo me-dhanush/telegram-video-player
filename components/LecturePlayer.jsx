@@ -38,6 +38,7 @@ export default function LecturePlayer() {
   const controlsTimeoutRef = useRef(null);
 
   const [lectureTitle, setLectureTitle] = useState("Loading...");
+  const [messageId, setMessageId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -187,6 +188,8 @@ export default function LecturePlayer() {
 
     const searchParams = new URLSearchParams(window.location.search);
     const messageId = searchParams.get("messageId");
+
+    setMessageId(Number(messageId) || 19);
 
     video.src = messageId ? `/api/video?messageId=${messageId}` : "/api/video";
 
@@ -723,6 +726,7 @@ export default function LecturePlayer() {
             <NotesPanel
               videoRef={videoRef}
               currentTime={currentTime}
+              messageId={messageId}
               onClose={() => setNotesVisible(false)}
             />
           )}

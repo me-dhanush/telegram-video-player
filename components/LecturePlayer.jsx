@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import NotesPanel from "./NotesPanel";
-import { Slider } from "@heroui/react";
 import VolumeSlider from "./VolumeSlider";
+import { Button, Dropdown, Label } from "@heroui/react";
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds)) return "00:00";
@@ -48,6 +48,7 @@ export default function LecturePlayer() {
   const [notesVisible, setNotesVisible] = useState(false);
   const [volume, setVolume] = useState(100);
   const [isMuted, setIsMuted] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
   function togglePlay() {
     const video = videoRef.current;
@@ -96,6 +97,15 @@ export default function LecturePlayer() {
 
     video.muted = !video.muted;
     setIsMuted(video.muted);
+  }
+
+  function changePlaybackSpeed(speed) {
+    const video = videoRef.current;
+
+    if (!video) return;
+
+    video.playbackRate = speed;
+    setPlaybackSpeed(speed);
   }
 
   function updateProgress() {
@@ -661,25 +671,96 @@ export default function LecturePlayer() {
                         <path d="M18.75 6.75h1.875c.621 0 1.125.504 1.125 1.125V18a1.5 1.5 0 0 1-3 0V6.75Z"></path>
                       </svg>
                     </button>
-                    <button
-                      id="settBtn"
-                      className="w-11 h-11 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:scale-90 transition"
-                      type="button"
-                      title="Settings"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="size-6"
+                    <Dropdown>
+                      <Button
+                        id="settBtn"
+                        aria-label="Playback speed"
+                        className="w-11 h-11 min-w-11 p-0 rounded-lg bg-transparent text-white hover:bg-white/[0.08] active:scale-90 transition-colors"
                       >
-                        <path
-                          fillRule="evenodd"
-                          d="M11.828 2.25c-.916 0-1.699.663-1.85 1.567l-.091.549a.798.798 0 0 1-.517.608 7.45 7.45 0 0 0-.478.198.798.798 0 0 1-.796-.064l-.453-.324a1.875 1.875 0 0 0-2.416.2l-.243.243a1.875 1.875 0 0 0-.2 2.416l.324.453a.798.798 0 0 1 .064.796 7.448 7.448 0 0 0-.198.478.798.798 0 0 1-.608.517l-.55.092a1.875 1.875 0 0 0-1.566 1.849v.344c0 .916.663 1.699 1.567 1.85l.549.091c.281.047.508.25.608.517.06.162.127.321.198.478a.798.798 0 0 1-.064.796l-.324.453a1.875 1.875 0 0 0 .2 2.416l.243.243c.648.648 1.67.733 2.416.2l.453-.324a.798.798 0 0 1 .796-.064c.157.071.316.137.478.198.267.1.47.327.517.608l.092.55c.15.903.932 1.566 1.849 1.566h.344c.916 0 1.699-.663 1.85-1.567l.091-.549a.798.798 0 0 1 .517-.608 7.52 7.52 0 0 0 .478-.198.798.798 0 0 1 .796.064l.453.324a1.875 1.875 0 0 0 2.416-.2l.243-.243c.648-.648.733-1.67.2-2.416l-.324-.453a.798.798 0 0 1-.064-.796c.071-.157.137-.316.198-.478.1-.267.327-.47.608-.517l.55-.091a1.875 1.875 0 0 0 1.566-1.85v-.344c0-.916-.663-1.699-1.567-1.85l-.549-.091a.798.798 0 0 1-.608-.517 7.507 7.507 0 0 0-.198-.478.798.798 0 0 1 .064-.796l.324-.453a1.875 1.875 0 0 0-.2-2.416l-.243-.243a1.875 1.875 0 0 0-2.416-.2l-.453.324a.798.798 0 0 1-.796.064 7.462 7.462 0 0 0-.478-.198.798.798 0 0 1-.517-.608l-.091-.55a1.875 1.875 0 0 0-1.85-1.566h-.344ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z"
-                          clipRule="evenodd"
-                        ></path>
-                      </svg>
-                    </button>
+                        <span className="text-xs font-medium">
+                          {playbackSpeed}x
+                        </span>
+                      </Button>
+
+                      <Dropdown.Popover className="min-w-[110px] p-1 rounded-lg bg-[#17212b] border border-white/[0.07] shadow-xl">
+                        <Dropdown.Menu
+                          aria-label="Playback speed"
+                          selectedKeys={new Set([String(playbackSpeed)])}
+                          selectionMode="single"
+                          onSelectionChange={(keys) => {
+                            const selectedSpeed = Array.from(keys)[0];
+
+                            if (selectedSpeed) {
+                              changePlaybackSpeed(Number(selectedSpeed));
+                            }
+                          }}
+                          className="outline-none"
+                        >
+                          <Dropdown.Item
+                            id="0.5"
+                            textValue="0.5x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">0.5x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+
+                          <Dropdown.Item
+                            id="0.75"
+                            textValue="0.75x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">0.75x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+
+                          <Dropdown.Item
+                            id="1"
+                            textValue="1x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">1x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+
+                          <Dropdown.Item
+                            id="1.25"
+                            textValue="1.25x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">1.25x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+
+                          <Dropdown.Item
+                            id="1.5"
+                            textValue="1.5x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">1.5x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+
+                          <Dropdown.Item
+                            id="1.75"
+                            textValue="1.75x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">1.75x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+
+                          <Dropdown.Item
+                            id="2"
+                            textValue="2x"
+                            className="h-9 px-3 rounded-md text-[13px] text-white bg-transparent! data-[hovered=true]:!bg-[#202d3a] data-[selected=true]:!bg-[#229ed9]"
+                          >
+                            <Label className="text-white">2x</Label>
+                            <Dropdown.ItemIndicator />
+                          </Dropdown.Item>
+                        </Dropdown.Menu>
+                      </Dropdown.Popover>
+                    </Dropdown>
                     <button
                       id="fullscreenBtn"
                       className="w-11 h-11 flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:scale-90 transition"

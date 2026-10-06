@@ -124,6 +124,17 @@ const videos = allMessages
   };
 }
 
+let telegramPromise = null;
+
+async function getTelegram() {
+  if (!telegramPromise) {
+    telegramPromise = startTelegram();
+  }
+
+  return telegramPromise;
+}
+
 module.exports = {
   startTelegram,
+  getTelegram,
 };

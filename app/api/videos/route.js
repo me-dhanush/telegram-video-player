@@ -1,16 +1,6 @@
 import { NextResponse } from "next/server";
-import { startTelegram } from "@/src/telegram/telegramClient";
+import { getTelegram } from "@/src/telegram/telegramClient";
 import { prisma } from "@/lib/prisma";
-
-let telegramPromise = null;
-
-async function getTelegram() {
-  if (!telegramPromise) {
-    telegramPromise = startTelegram();
-  }
-
-  return telegramPromise;
-}
 
 export async function GET() {
   try {

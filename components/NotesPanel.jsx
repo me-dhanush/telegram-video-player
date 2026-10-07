@@ -58,6 +58,21 @@ export default function NotesPanel({
   const [timestamp, setTimestamp] = useState("");
   const [noteText, setNoteText] = useState("");
   const importInputRef = useRef(null);
+  const editTextRef = useRef(null);
+  const noteTextRef = useRef(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  useEffect(() => {
+    if (editorOpen) {
+      noteTextRef.current?.focus();
+    }
+  }, [editorOpen]);
+
+  useEffect(() => {
+    if (editingIndex !== null) {
+      editTextRef.current?.focus();
+    }
+  }, [editingIndex]);
 
   useEffect(() => {
     async function loadNotes() {
@@ -137,7 +152,6 @@ export default function NotesPanel({
     notes,
   ]);
 
-
   function seekTo(seconds) {
     if (!videoRef.current) return;
 
@@ -203,35 +217,35 @@ export default function NotesPanel({
     }
   }
 
-async function deleteNote(index) {
-  const note = notes[index];
+  async function deleteNote(index) {
+    const note = notes[index];
 
-  if (!note?.id) {
-    console.error("Note does not have a database ID:", note);
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/notes?id=${note.id}`, {
-      method: "DELETE",
-    });
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.error || "Could not delete note");
+    if (!note?.id) {
+      console.error("Note does not have a database ID:", note);
+      return;
     }
 
-    const nextNotes = notes.filter((_, noteIndex) => noteIndex !== index);
+    try {
+      const response = await fetch(`/api/notes?id=${note.id}`, {
+        method: "DELETE",
+      });
 
-    setNotes(nextNotes);
+      const data = await response.json();
 
-    console.log("✅ Note deleted from database:", note.id);
-  } catch (error) {
-    console.error("❌ Could not delete note:", error);
-    alert("Could not delete note.");
+      if (!data.success) {
+        throw new Error(data.error || "Could not delete note");
+      }
+
+      const nextNotes = notes.filter((_, noteIndex) => noteIndex !== index);
+
+      setNotes(nextNotes);
+
+      console.log("✅ Note deleted from database:", note.id);
+    } catch (error) {
+      console.error("❌ Could not delete note:", error);
+      alert("Could not delete note.");
+    }
   }
-}
 
   function editNote(index) {
     const note = notes[index];
@@ -241,62 +255,73 @@ async function deleteNote(index) {
     setEditingText(note.text);
   }
 
-async function saveEditedNote() {
-  const parsedTime = parseTimestamp(editingTimestamp);
+  async function saveEditedNote() {
+    if (savingEdit) return;
 
-  if (parsedTime === null) {
-    alert("Invalid timestamp.");
-    return;
-  }
+    setSavingEdit(true);
 
-  const text = editingText.trim();
+    const parsedTime = parseTimestamp(editingTimestamp);
 
-  if (!text) {
-    alert("Please enter a note.");
-    return;
-  }
-
-  const note = notes[editingIndex];
-
-  if (!note?.id) {
-    console.error("Note does not have a database ID:", note);
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/notes?id=${note.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        time: parsedTime,
-        text,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.error || "Could not update note");
+    if (parsedTime === null) {
+      alert("Invalid timestamp.");
+      setSavingEdit(false);
+      return;
     }
 
-    const nextNotes = notes
-      .map((item, noteIndex) => (noteIndex === editingIndex ? data.note : item))
-      .sort((a, b) => a.time - b.time);
+    const text = editingText.trim();
 
-    setNotes(nextNotes);
+    if (!text) {
+      alert("Please enter a note.");
+      setSavingEdit(false);
+      return;
+    }
 
-    setEditingIndex(null);
-    setEditingTimestamp("");
-    setEditingText("");
+    const note = notes[editingIndex];
 
-    console.log("✅ Note updated in database:", data.note);
-  } catch (error) {
-    console.error("❌ Could not update note:", error);
-    alert("Could not update note.");
+    if (!note?.id) {
+      console.error("Note does not have a database ID:", note);
+      setSavingEdit(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/notes?id=${note.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          time: parsedTime,
+          text,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "Could not update note");
+      }
+
+      const nextNotes = notes
+        .map((item, noteIndex) =>
+          noteIndex === editingIndex ? data.note : item,
+        )
+        .sort((a, b) => a.time - b.time);
+
+      setNotes(nextNotes);
+
+      setEditingIndex(null);
+      setEditingTimestamp("");
+      setEditingText("");
+
+      console.log("✅ Note updated in database:", data.note);
+    } catch (error) {
+      console.error("❌ Could not update note:", error);
+      alert("Could not update note.");
+    } finally {
+      setSavingEdit(false);
+    }
   }
-}
 
   function cancelEdit() {
     setEditingIndex(null);
@@ -304,83 +329,83 @@ async function saveEditedNote() {
     setEditingText("");
   }
 
-function exportNotes() {
-  const data = {
-    video: {
-      telegramChatId: "-1004466834272",
-      messageId: messageId,
-    },
-    notes,
-  };
+  function exportNotes() {
+    const data = {
+      video: {
+        telegramChatId: "-1004466834272",
+        messageId: messageId,
+      },
+      notes,
+    };
 
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
 
-  const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
 
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `PW-Classes-Lecture-${messageId}.json`;
-  link.click();
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `PW-Classes-Lecture-${messageId}.json`;
+    link.click();
 
-  URL.revokeObjectURL(url);
-}
+    URL.revokeObjectURL(url);
+  }
 
-async function importNotes(event) {
-  const file = event.target.files?.[0];
+  async function importNotes(event) {
+    const file = event.target.files?.[0];
 
-  if (!file) return;
+    if (!file) return;
 
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
 
-    if (!data || !Array.isArray(data.notes)) {
-      throw new Error("Invalid notes file");
-    }
+      if (!data || !Array.isArray(data.notes)) {
+        throw new Error("Invalid notes file");
+      }
 
-    for (const importedNote of data.notes) {
-      const response = await fetch("/api/notes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          telegramChatId: "-1004466834272",
-          messageId: messageId,
-          time: importedNote.time,
-          text: importedNote.text,
-        }),
-      });
+      for (const importedNote of data.notes) {
+        const response = await fetch("/api/notes", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            telegramChatId: "-1004466834272",
+            messageId: messageId,
+            time: importedNote.time,
+            text: importedNote.text,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || "Could not import note");
+        }
+      }
+
+      const response = await fetch(
+        `/api/notes?telegramChatId=-1004466834272&messageId=${messageId}`,
+      );
 
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || "Could not import note");
+        throw new Error(result.error || "Could not reload notes");
       }
+
+      setNotes(result.notes);
+
+      console.log("✅ Notes imported to database");
+    } catch (error) {
+      console.error("❌ Could not import notes:", error);
+      alert("Could not import notes.");
     }
 
-    const response = await fetch(
-      `/api/notes?telegramChatId=-1004466834272&messageId=${messageId}`,
-    );
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.error || "Could not reload notes");
-    }
-
-    setNotes(result.notes);
-
-    console.log("✅ Notes imported to database");
-  } catch (error) {
-    console.error("❌ Could not import notes:", error);
-    alert("Could not import notes.");
+    event.target.value = "";
   }
-
-  event.target.value = "";
-}
 
   return (
     <aside
@@ -474,12 +499,17 @@ async function importNotes(event) {
                         <div className="ml-auto flex items-center gap-1">
                           <button
                             type="button"
-                            title="Save"
+                            title={savingEdit ? "Saving..." : "Save"}
+                            disabled={savingEdit}
                             onClick={(event) => {
                               event.stopPropagation();
                               saveEditedNote();
                             }}
-                            className="w-7 h-7 rounded-md flex items-center justify-center text-[#42b5e8] hover:bg-[#229ed9]/10 transition cursor-pointer"
+                            className={`w-7 h-7 rounded-md flex items-center justify-center text-[#42b5e8] transition ${
+                              savingEdit
+                                ? "opacity-40 cursor-not-allowed"
+                                : "hover:bg-[#229ed9]/10 cursor-pointer"
+                            }`}
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -521,7 +551,7 @@ async function importNotes(event) {
 
                       {/* EDIT NOTE */}
                       <textarea
-                        autoFocus
+                        ref={editTextRef}
                         value={editingText}
                         onChange={(event) => setEditingText(event.target.value)}
                         onClick={(event) => event.stopPropagation()}
@@ -618,6 +648,7 @@ async function importNotes(event) {
         />
 
         <textarea
+          ref={noteTextRef}
           placeholder="Write your note..."
           value={noteText}
           onChange={(event) => setNoteText(event.target.value)}

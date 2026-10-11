@@ -3,6 +3,8 @@ require("dotenv").config();
 const { TelegramClient, Api } = require("teleproto");
 const { StringSession } = require("teleproto/sessions");
 
+console.log("TELEGRAM MODULE LOADED:", __filename);
+
 const apiId = Number(process.env.API_ID);
 const apiHash = process.env.API_HASH;
 
@@ -109,13 +111,14 @@ async function startTelegram() {
   };
 }
 
-let telegramPromise = null;
+let telegramPromise = globalThis.__telegramPromise || null;
 let reconnectPromise = null;
 
 async function getTelegram() {
-  if (!telegramPromise) {
-    telegramPromise = startTelegram();
-  }
+if (!telegramPromise) {
+  telegramPromise = startTelegram();
+  globalThis.__telegramPromise = telegramPromise;
+}
 
   const telegram = await telegramPromise;
 

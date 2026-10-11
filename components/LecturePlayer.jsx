@@ -201,7 +201,9 @@ export default function LecturePlayer() {
 
     setMessageId(Number(messageId) || 19);
 
+    video.preload = "metadata";
     video.src = messageId ? `/api/video?messageId=${messageId}` : "/api/video";
+    video.load();
 
     fetch("/api/videos")
       .then((response) => response.json())

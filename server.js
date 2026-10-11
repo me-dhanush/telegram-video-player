@@ -1,7 +1,7 @@
 const express = require("express");
 const next = require("next");
 
-const { startTelegram } = require("./src/telegram/telegramClient");
+const { getTelegram } = require("./src/telegram/telegramClient");
 const { createVideoStreamHandler } = require("./src/video/videoStream");
 
 require("dotenv").config();
@@ -16,7 +16,7 @@ async function main() {
     await nextApp.prepare();
 
     const app = express();
-    const telegram = await startTelegram();
+    const telegram = await getTelegram();
 
     // Keep the existing Telegram streaming endpoint unchanged.
     app.get("/video", (req, res) => {

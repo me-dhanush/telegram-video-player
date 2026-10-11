@@ -6,35 +6,24 @@ export async function GET() {
   try {
     const telegram = await startTelegram();
 
-    let savedCount = 0;
-
-    for (const video of telegram.videos) {
-      await prisma.video.upsert({
-        where: {
-          telegramChatId_messageId: {
-            telegramChatId: telegram.telegramChatId,
-            messageId: video.id,
-          },
-        },
-        update: {},
-        create: {
-          telegramChatId: telegram.telegramChatId,
-          messageId: video.id,
-        },
-      });
-
-      savedCount++;
-    }
+    const result = await prisma.video.createMany({
+      data: telegram.videos.map((video) => ({
+        telegramChatId: telegram.telegramChatId,
+        messageId: video.id,
+      })),
+      skipDuplicates: true,
+    });
 
     const videosInDatabase = await prisma.video.count();
 
     console.log("✅ Videos synced!");
-    console.log("Videos processed:", savedCount);
+    console.log("New videos added:", result.count);
     console.log("Videos in database:", videosInDatabase);
 
     return NextResponse.json({
       success: true,
-      videosProcessed: savedCount,
+      videosProcessed: telegram.videos.length,
+      newVideosAdded: result.count,
       videosInDatabase,
     });
   } catch (error) {

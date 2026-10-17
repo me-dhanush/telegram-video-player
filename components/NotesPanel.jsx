@@ -48,6 +48,7 @@ export default function NotesPanel({
   videoRef,
   currentTime,
   messageId,
+  telegramChatId,
   onClose,
 }) {
   const [notes, setNotes] = useState([]);
@@ -77,9 +78,11 @@ export default function NotesPanel({
   useEffect(() => {
     async function loadNotes() {
       try {
-        const response = await fetch(
-          `/api/notes?telegramChatId=-1004466834272&messageId=${messageId}`,
-        );
+        const query = new URLSearchParams({
+          telegramChatId,
+          messageId: String(messageId),
+        });
+        const response = await fetch(`/api/notes?${query}`);
 
         const data = await response.json();
 
@@ -93,10 +96,10 @@ export default function NotesPanel({
       }
     }
 
-    if (!messageId) return;
+    if (!messageId || !telegramChatId) return;
 
     loadNotes();
-  }, [messageId]);
+  }, [messageId, telegramChatId]);
 
   useEffect(() => {
     function handleKeyboardShortcuts(event) {
@@ -189,7 +192,7 @@ export default function NotesPanel({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          telegramChatId: "-1004466834272",
+          telegramChatId,
           messageId: messageId,
           time: parsedTimestamp,
           text,
@@ -332,7 +335,7 @@ export default function NotesPanel({
   function exportNotes() {
     const data = {
       video: {
-        telegramChatId: "-1004466834272",
+        telegramChatId,
         messageId: messageId,
       },
       notes,
@@ -372,7 +375,7 @@ export default function NotesPanel({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            telegramChatId: "-1004466834272",
+            telegramChatId,
             messageId: messageId,
             time: importedNote.time,
             text: importedNote.text,
@@ -386,9 +389,11 @@ export default function NotesPanel({
         }
       }
 
-      const response = await fetch(
-        `/api/notes?telegramChatId=-1004466834272&messageId=${messageId}`,
-      );
+      const query = new URLSearchParams({
+        telegramChatId,
+        messageId: String(messageId),
+      });
+      const response = await fetch(`/api/notes?${query}`);
 
       const result = await response.json();
 

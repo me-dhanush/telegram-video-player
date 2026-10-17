@@ -1,6 +1,31 @@
 const { Api } = require("teleproto");
 
-const TELEGRAM_CHUNK_SIZE = 1024 * 1024; // 1 MB
+const TELEGRAM_CHUNK_SIZE = 256 * 1024; // 256 KB
+const fileDcIds = new Map();
+
+async function invokeGetFile(client, request, fileKey) {
+    let dcId = fileDcIds.get(fileKey);
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+            return await client.invoke(request, dcId);
+        } catch (error) {
+            if (
+                error?.constructor?.name !== "FileMigrateError" ||
+                typeof error.newDc !== "number" ||
+                error.newDc === dcId
+            ) {
+                throw error;
+            }
+
+            dcId = error.newDc;
+            fileDcIds.set(fileKey, dcId);
+            console.log(`🔁 Telegram file is on DC ${dcId}; retrying there.`);
+        }
+    }
+
+    throw new Error("Telegram file DC migration retries exhausted");
+}
 
 function createVideoStreamHandler({
     client,
@@ -14,27 +39,61 @@ function createVideoStreamHandler({
             }
 
             const fileSize = Number(videoDocument.size);
+            if (!Number.isSafeInteger(fileSize) || fileSize <= 0) {
+                return res.status(500).send("Invalid video size");
+            }
 
             console.log("\n🌐 Browser requested video");
             console.log("Range:", req.headers.range);
 
             let browserStart = 0;
+            let requestedEnd = fileSize - 1;
 
             if (req.headers.range) {
-                const match = req.headers.range.match(/bytes=(\d+)-/);
+                const match = req.headers.range.match(/^bytes=(\d*)-(\d*)$/);
+                if (!match || (!match[1] && !match[2])) {
+                    return res
+                        .status(416)
+                        .set("Content-Range", `bytes */${fileSize}`)
+                        .end();
+                }
 
-                if (match) {
+                if (!match[1]) {
+                    const suffixLength = Number(match[2]);
+                    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+                        return res
+                            .status(416)
+                            .set("Content-Range", `bytes */${fileSize}`)
+                            .end();
+                    }
+                    browserStart = Math.max(0, fileSize - suffixLength);
+                } else {
                     browserStart = Number(match[1]);
+                    requestedEnd = match[2] ? Number(match[2]) : fileSize - 1;
                 }
             }
 
+            if (
+                !Number.isSafeInteger(browserStart) ||
+                !Number.isSafeInteger(requestedEnd) ||
+                browserStart < 0 ||
+                browserStart >= fileSize ||
+                requestedEnd < browserStart
+            ) {
+                return res
+                    .status(416)
+                    .set("Content-Range", `bytes */${fileSize}`)
+                    .end();
+            }
+            requestedEnd = Math.min(requestedEnd, fileSize - 1);
+
             /*
              * Telegram requires each request to stay inside
-             * one 1 MB boundary.
+             * one 256 KB boundary.
              *
              * Example:
              * Browser asks: 8847360-
-             * We calculate which 1 MB block contains that position.
+             * We calculate which 256 KB block contains that position.
              */
             const blockStart =
                 Math.floor(browserStart / TELEGRAM_CHUNK_SIZE) *
@@ -50,7 +109,7 @@ function createVideoStreamHandler({
 
             /* Telegram requires the limit to be divisible by 4096. */
             const alignedLimit =
-                Math.floor(telegramLimit / 4096) * 4096;
+                Math.ceil(telegramLimit / 4096) * 4096;
 
             if (alignedLimit <= 0) {
                 return res.status(416).send("Invalid range");
@@ -60,16 +119,26 @@ function createVideoStreamHandler({
             console.log("Telegram offset:", browserStart);
             console.log("Telegram limit:", alignedLimit);
 
-            const result = await client.invoke(
+            const result = await invokeGetFile(
+                client,
                 new Api.upload.GetFile({
                     location: videoLocation,
                     offset: browserStart,
                     limit: alignedLimit,
                     precise: true,
-                })
+                }),
+                videoDocument.id.toString()
             );
 
-            const data = Buffer.from(result.bytes);
+            const telegramData = Buffer.from(result.bytes);
+            const data = telegramData.subarray(
+                0,
+                Math.min(telegramData.length, requestedEnd - browserStart + 1)
+            );
+
+            if (data.length === 0) {
+                return res.status(502).send("Requested video range is unavailable");
+            }
 
             console.log("✅ Received:", data.length, "bytes from Telegram");
 

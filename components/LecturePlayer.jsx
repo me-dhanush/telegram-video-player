@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import NotesPanel from "./NotesPanel";
 import VolumeSlider from "./VolumeSlider";
-import { Button, Dropdown, Label } from "@heroui/react";
+import { Button, Dropdown, Label, Spinner } from "@heroui/react";
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds)) return "00:00";
@@ -39,6 +39,7 @@ export default function LecturePlayer() {
 
   const [lectureTitle, setLectureTitle] = useState("Loading...");
   const [messageId, setMessageId] = useState(null);
+  const [telegramChatId, setTelegramChatId] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -49,6 +50,9 @@ export default function LecturePlayer() {
   const [volume, setVolume] = useState(100);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [isVideoLoading, setIsVideoLoading] = useState(true);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [videoError, setVideoError] = useState(false);
 
   function togglePlay() {
     const video = videoRef.current;
@@ -180,12 +184,9 @@ export default function LecturePlayer() {
     setControlsVisible(true);
 
     clearTimeout(controlsTimeoutRef.current);
-
-    if (!videoRef.current?.paused) {
-      controlsTimeoutRef.current = setTimeout(() => {
-        setControlsVisible(false);
-      }, 2000);
-    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, 2000);
   }
 
   useEffect(() => {
@@ -197,27 +198,50 @@ export default function LecturePlayer() {
     if (!video) return;
 
     const searchParams = new URLSearchParams(window.location.search);
-    const messageId = searchParams.get("messageId");
+    const selectedMessageId = Number(searchParams.get("messageId")) || 19;
 
-    setMessageId(Number(messageId) || 19);
+    setMessageId(selectedMessageId);
 
     video.preload = "metadata";
-    video.src = messageId ? `/api/video?messageId=${messageId}` : "/api/video";
+    video.src = `/api/video?messageId=${selectedMessageId}`;
     video.load();
 
     fetch("/api/videos")
       .then((response) => response.json())
       .then((videos) => {
-        const selectedMessageId = Number(messageId) || 19;
-
         const selectedVideo = videos.find(
           (video) => video.id === selectedMessageId,
         );
 
         if (selectedVideo) {
           setLectureTitle(selectedVideo.name);
+          setTelegramChatId(selectedVideo.telegramChatId);
         }
       });
+
+    const handleCanPlay = () => {
+      setIsVideoLoading(false);
+      setVideoError(false);
+    };
+
+    const handleWaiting = () => {
+      if (!video.error) {
+        setIsVideoLoading(true);
+      }
+    };
+
+    const handleSeeking = () => {
+      setIsSeeking(true);
+    };
+
+    const handleSeeked = () => {
+      setIsSeeking(false);
+    };
+
+    const handleVideoError = () => {
+      setIsVideoLoading(false);
+      setVideoError(true);
+    };
 
     const handlePlay = () => {
       setIsPlaying(true);
@@ -226,8 +250,7 @@ export default function LecturePlayer() {
 
     const handlePause = () => {
       setIsPlaying(false);
-      clearTimeout(controlsTimeoutRef.current);
-      setControlsVisible(true);
+      showVideoControls();
     };
 
     const handleEnded = () => {
@@ -255,6 +278,11 @@ export default function LecturePlayer() {
     video.addEventListener("ended", handleEnded);
     video.addEventListener("timeupdate", updateProgress);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("waiting", handleWaiting);
+    video.addEventListener("seeking", handleSeeking);
+    video.addEventListener("seeked", handleSeeked);
+    video.addEventListener("error", handleVideoError);
     videoColumnRef.current?.addEventListener("mousemove", handleMouseMove);
     videoColumnRef.current?.addEventListener("click", handleVideoTap);
     return () => {
@@ -263,6 +291,11 @@ export default function LecturePlayer() {
       video.removeEventListener("ended", handleEnded);
       video.removeEventListener("timeupdate", updateProgress);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("waiting", handleWaiting);
+      video.removeEventListener("seeking", handleSeeking);
+      video.removeEventListener("seeked", handleSeeked);
+      video.removeEventListener("error", handleVideoError);
       videoColumnRef.current?.removeEventListener("mousemove", handleMouseMove);
       videoColumnRef.current?.removeEventListener("click", handleVideoTap);
       clearTimeout(controlsTimeoutRef.current);
@@ -283,16 +316,15 @@ export default function LecturePlayer() {
 
   useEffect(() => {
     function handleKeyboard(event) {
-      const activeElement = document.activeElement;
+      const target = event.target;
+      const isEditingText =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
-      const isTyping =
-        activeElement &&
-        (activeElement.tagName === "INPUT" ||
-          activeElement.tagName === "TEXTAREA");
+      if (isEditingText) return;
 
-      if (isTyping) return;
-
-      if (event.code === "Space") {
+      if (event.code === "Space" || event.key === "5") {
         event.preventDefault();
         togglePlay();
       }
@@ -350,6 +382,30 @@ export default function LecturePlayer() {
                 preload="metadata"
                 className="w-full h-full object-contain bg-black"
               ></video>
+
+              {/* Keep playback errors visible, but leave loading to the play control
+                  so the timeline stays interactive while buffering or seeking. */}
+              {videoError && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black">
+                  <p className="text-sm text-red-400">Failed to load video</p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const video = videoRef.current;
+
+                      if (!video) return;
+
+                      setVideoError(false);
+                      setIsVideoLoading(true);
+                      video.load();
+                    }}
+                    className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
             </div>
             {/* =========================
                      PLAYER HEADER OVERLAY
@@ -435,12 +491,12 @@ export default function LecturePlayer() {
                         fillRule="evenodd"
                         d="M10.72 11.47a.75.75 0 0 0 0 1.06l7.5 7.5a.75.75 0 1 0 1.06-1.06L12.31 12l6.97-6.97a.75.75 0 0 0-1.06-1.06l-7.5 7.5Z"
                         clipRule="evenodd"
-                      ></path>
+                      />
                       <path
                         fillRule="evenodd"
                         d="M4.72 11.47a.75.75 0 0 0 0 1.06l7.5 7.5a.75.75 0 1 0 1.06-1.06L6.31 12l6.97-6.97a.75.75 0 0 0-1.06-1.06l-7.5 7.5Z"
                         clipRule="evenodd"
-                      ></path>
+                      />
                     </svg>
                   </div>
                 </button>
@@ -450,35 +506,27 @@ export default function LecturePlayer() {
                   type="button"
                   className="pointer-events-auto cursor-pointer text-white hover:scale-110 active:scale-95 transition-transform"
                 >
-                  {/* Play */}
-                  <svg
-                    id="midIPlay"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className={`size-10 ${isPlaying ? "hidden" : ""}`}
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-
-                  {/* Pause */}
-                  <svg
-                    id="midIPause"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className={`size-10 ${isPlaying ? "" : "hidden"}`}
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M6.75 5.25A2.25 2.25 0 0 1 9 7.5v9a2.25 2.25 0 1 1-4.5 0v-9A2.25 2.25 0 0 1 6.75 5.25Zm8.25 0A2.25 2.25 0 0 1 17.25 7.5v9a2.25 2.25 0 1 1-4.5 0v-9A2.25 2.25 0 0 1 15 5.25Z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
+                  {isSeeking || isVideoLoading ? (
+                    <Spinner size="lg" color="primary" />
+                  ) : isPlaying ? (
+                    // Pause
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="size-10"
+                    >
+                      <path d="M6.75 5.25A2.25 2.25 0 0 1 9 7.5v9a2.25 2.25 0 1 1-4.5 0v-9A2.25 2.25 0 0 1 6.75 5.25Zm8.25 0A2.25 2.25 0 0 1 17.25 7.5v9a2.25 2.25 0 1 1-4.5 0v-9A2.25 2.25 0 0 1 15 5.25Z" />
+                    </svg>
+                  ) : (
+                    // Play
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="size-10"
+                    >
+                      <path d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" />
+                    </svg>
+                  )}
                 </button>
                 {/* +10 seconds */}
                 <button
@@ -810,6 +858,7 @@ export default function LecturePlayer() {
               videoRef={videoRef}
               currentTime={currentTime}
               messageId={messageId}
+              telegramChatId={telegramChatId}
               onClose={() => setNotesVisible(false)}
             />
           )}

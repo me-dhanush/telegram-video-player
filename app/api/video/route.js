@@ -1,10 +1,60 @@
-import { getTelegram } from "@/src/telegram/telegramClient";
+import { ensureTelegramConnected, getTelegram } from "@/src/telegram/telegramClient";
 
 import { Api } from "teleproto";
 
 const TELEGRAM_CHUNK_SIZE = 1024 * 1024; // 1 MB
+const MAX_CACHED_BLOCK_BYTES = 32 * 1024 * 1024;
 
 const downloadingBlocks = new Map();
+const downloadedBlocks = new Map();
+let downloadedBlockBytes = 0;
+const fileDcIds = new Map();
+
+function rememberDownloadedBlock(key, data) {
+  if (data.length > MAX_CACHED_BLOCK_BYTES) return;
+
+  const previous = downloadedBlocks.get(key);
+  if (previous) {
+    downloadedBlockBytes -= previous.length;
+    downloadedBlocks.delete(key);
+  }
+
+  while (downloadedBlockBytes + data.length > MAX_CACHED_BLOCK_BYTES) {
+    const oldestKey = downloadedBlocks.keys().next().value;
+    if (oldestKey === undefined) break;
+    downloadedBlockBytes -= downloadedBlocks.get(oldestKey).length;
+    downloadedBlocks.delete(oldestKey);
+  }
+
+  downloadedBlocks.set(key, data);
+  downloadedBlockBytes += data.length;
+}
+
+async function invokeGetFile(telegram, request, fileKey) {
+  // Telegram can move a file to another DC. A direct invoke does not
+  // automatically follow FILE_MIGRATE, so retry explicitly on that DC.
+  let dcId = fileDcIds.get(fileKey);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await telegram.client.invoke(request, dcId);
+    } catch (error) {
+      if (
+        error?.constructor?.name !== "FileMigrateError" ||
+        typeof error.newDc !== "number" ||
+        error.newDc === dcId
+      ) {
+        throw error;
+      }
+
+      dcId = error.newDc;
+      fileDcIds.set(fileKey, dcId);
+      console.log(`🔁 Telegram file is on DC ${dcId}; retrying there.`);
+    }
+  }
+
+  throw new Error("Telegram file DC migration retries exhausted");
+}
 
 async function downloadBlock(
   telegram,
@@ -13,7 +63,15 @@ async function downloadBlock(
   blockStart,
   blockSize,
 ) {
-  const key = `${messageId}:${blockStart}`;
+  const key = `${telegram.telegramChatId}:${messageId}:${video.videoDocument.id}:${blockStart}`;
+
+  const cachedBlock = downloadedBlocks.get(key);
+  if (cachedBlock) {
+    // Refresh insertion order so frequently used blocks stay in the LRU cache.
+    downloadedBlocks.delete(key);
+    downloadedBlocks.set(key, cachedBlock);
+    return cachedBlock;
+  }
 
   // Someone is already downloading this block
   if (downloadingBlocks.has(key)) {
@@ -21,7 +79,12 @@ async function downloadBlock(
   }
 
   const promise = (async () => {
-    const alignedLimit = Math.floor(blockSize / 4096) * 4096;
+    // Round the final, partial Telegram block up to the next legal request
+    // size. Telegram returns only the bytes that remain in the file.
+    const alignedLimit = Math.min(
+      TELEGRAM_CHUNK_SIZE,
+      Math.ceil(blockSize / 4096) * 4096,
+    );
 
     if (alignedLimit <= 0) {
       throw new Error("Invalid Telegram block size");
@@ -39,13 +102,15 @@ async function downloadBlock(
       // NORMAL DOWNLOAD
       // --------------------------------------------------
 
-      result = await telegram.client.invoke(
+      result = await invokeGetFile(
+        telegram,
         new Api.upload.GetFile({
           location: video.videoLocation,
           offset: blockStart,
           limit: alignedLimit,
           precise: true,
         }),
+        messageId,
       );
     } catch (error) {
       // --------------------------------------------------
@@ -89,13 +154,15 @@ async function downloadBlock(
         // RETRY DOWNLOAD WITH FRESH REFERENCE
         // --------------------------------------------------
 
-        result = await telegram.client.invoke(
+        result = await invokeGetFile(
+          telegram,
           new Api.upload.GetFile({
             location: freshVideoLocation,
             offset: blockStart,
             limit: alignedLimit,
             precise: true,
           }),
+          messageId,
         );
       }
 
@@ -108,17 +175,19 @@ async function downloadBlock(
         console.log("⚠️ Telegram disconnected during download.");
         console.log("🔄 Reconnecting...");
 
-        await telegram.client.connect();
+        await ensureTelegramConnected(telegram.client);
 
         console.log("✅ Reconnected.");
 
-        result = await telegram.client.invoke(
+        result = await invokeGetFile(
+          telegram,
           new Api.upload.GetFile({
             location: video.videoLocation,
             offset: blockStart,
             limit: alignedLimit,
             precise: true,
           }),
+          messageId,
         );
       } else {
         throw error;
@@ -131,7 +200,9 @@ async function downloadBlock(
   downloadingBlocks.set(key, promise);
 
   try {
-    return await promise;
+    const data = await promise;
+    rememberDownloadedBlock(key, data);
+    return data;
   } finally {
     downloadingBlocks.delete(key);
   }
@@ -160,20 +231,54 @@ export async function GET(request) {
     }
 
     const fileSize = Number(video.videoDocument.size);
+    if (!Number.isSafeInteger(fileSize) || fileSize <= 0) {
+      return new Response("Invalid video size", { status: 500 });
+    }
 
     const range = request.headers.get("range");
 
     let browserStart = 0;
+    let requestedEnd = fileSize - 1;
 
     if (range) {
-      const match = range.match(/bytes=(\d+)-/);
+      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+      if (!match || (!match[1] && !match[2])) {
+        return new Response(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${fileSize}` },
+        });
+      }
 
-      if (match) {
+      if (!match[1]) {
+        const suffixLength = Number(match[2]);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+          return new Response(null, {
+            status: 416,
+            headers: { "Content-Range": `bytes */${fileSize}` },
+          });
+        }
+        browserStart = Math.max(0, fileSize - suffixLength);
+      } else {
         browserStart = Number(match[1]);
+        requestedEnd = match[2] ? Number(match[2]) : fileSize - 1;
       }
     }
 
-    // Find which 1 MB Telegram block contains this request
+    if (
+      !Number.isSafeInteger(browserStart) ||
+      !Number.isSafeInteger(requestedEnd) ||
+      browserStart < 0 ||
+      browserStart >= fileSize ||
+      requestedEnd < browserStart
+    ) {
+      return new Response(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${fileSize}` },
+      });
+    }
+    requestedEnd = Math.min(requestedEnd, fileSize - 1);
+
+    // Find which 1 MB Telegram block contains this request.
     const blockStart =
       Math.floor(browserStart / TELEGRAM_CHUNK_SIZE) * TELEGRAM_CHUNK_SIZE;
 
@@ -188,8 +293,32 @@ export async function GET(request) {
     console.log("Browser start:", browserStart);
     console.log("Telegram block:", `${blockStart} → ${blockEnd - 1}`);
 
+    // Fetch one block ahead while this one is being sent to the browser. The
+    // browser's next range request can then use the in-memory cache instead of
+    // waiting for another full Telegram round trip.
+    const nextBlockStart = blockEnd;
+    if (nextBlockStart < fileSize) {
+      const nextBlockSize = Math.min(
+        TELEGRAM_CHUNK_SIZE,
+        fileSize - nextBlockStart,
+      );
+
+      void downloadBlock(
+        telegram,
+        video,
+        messageId,
+        nextBlockStart,
+        nextBlockSize,
+      ).catch((error) => {
+        console.warn(
+          `Video prefetch failed for message ${messageId} at ${nextBlockStart}:`,
+          error,
+        );
+      });
+    }
+
     // --------------------------------------------------
-    // DOWNLOAD 1 MB FROM TELEGRAM
+    // DOWNLOAD ONE BLOCK FROM TELEGRAM
     // --------------------------------------------------
 
     const telegramData = await downloadBlock(
@@ -208,7 +337,19 @@ export async function GET(request) {
 
     const offsetInsideBlock = browserStart - blockStart;
 
-    const data = telegramData.subarray(offsetInsideBlock);
+    const data = telegramData.subarray(
+      offsetInsideBlock,
+      Math.min(
+        telegramData.length,
+        offsetInsideBlock + requestedEnd - browserStart + 1,
+      ),
+    );
+
+    if (data.length === 0) {
+      return new Response("Requested video range is unavailable", {
+        status: 502,
+      });
+    }
 
     const actualEnd = browserStart + data.length - 1;
 

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { startTelegram } from "@/src/telegram/telegramClient";
+import { getTelegram } from "@/src/telegram/telegramClient";
 
 export async function GET() {
   try {
-    const telegram = await startTelegram();
+    const telegram = await getTelegram();
 
     let savedCount = 0;
 

@@ -21,7 +21,7 @@ function createVideoLocation(message) {
   });
 }
 
-async function startTelegram() {
+async function createTelegram() {
   console.log("Connecting to Telegram...");
 
   const client = new TelegramClient(stringSession, apiId, apiHash, {
@@ -62,7 +62,11 @@ async function startTelegram() {
 
   const allMessages = [];
 
-  for await (const message of client.iterMessages(pwClasses.entity)) {
+  // Ask Telegram to filter server-side so cold starts don't download and
+  // inspect every text/photo message in the chat.
+  for await (const message of client.iterMessages(pwClasses.entity, {
+    filter: new Api.InputMessagesFilterVideo(),
+  })) {
     allMessages.push(message);
   }
 
@@ -86,6 +90,7 @@ async function startTelegram() {
 
       return {
         id: message.id,
+        telegramChatId: pwClasses.id.toString(),
         name: message.message || `Video ${message.id}`,
         topicId,
         topicName: topic?.title || `Topic ${topicId}`,
@@ -111,27 +116,41 @@ async function startTelegram() {
   };
 }
 
+// Keep the client and its startup/reconnect locks on globalThis so Next.js
+// development module reloads do not create another client with the same key.
 let telegramPromise = globalThis.__telegramPromise || null;
-let reconnectPromise = null;
 
-async function getTelegram() {
-if (!telegramPromise) {
-  telegramPromise = startTelegram();
-  globalThis.__telegramPromise = telegramPromise;
+function startTelegram() {
+  if (!telegramPromise) {
+    telegramPromise = createTelegram().catch((error) => {
+      telegramPromise = null;
+      globalThis.__telegramPromise = null;
+      throw error;
+    });
+    globalThis.__telegramPromise = telegramPromise;
+  }
+
+  return telegramPromise;
 }
 
-  const telegram = await telegramPromise;
+async function ensureTelegramConnected(client) {
+  if (client.connected) return;
+
+  if (!globalThis.__telegramReconnectPromise) {
+    globalThis.__telegramReconnectPromise = client.connect().finally(() => {
+      globalThis.__telegramReconnectPromise = null;
+    });
+  }
+
+  await globalThis.__telegramReconnectPromise;
+}
+
+async function getTelegram() {
+  const telegram = await startTelegram();
 
   if (!telegram.client.connected) {
     console.log("⚠️ Telegram disconnected. Reconnecting...");
-
-    if (!reconnectPromise) {
-      reconnectPromise = telegram.client.connect().finally(() => {
-        reconnectPromise = null;
-      });
-    }
-
-    await reconnectPromise;
+    await ensureTelegramConnected(telegram.client);
 
     console.log("✅ Telegram reconnected");
   }
@@ -142,4 +161,5 @@ if (!telegramPromise) {
 module.exports = {
   startTelegram,
   getTelegram,
+  ensureTelegramConnected,
 };

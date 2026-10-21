@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const { TelegramClient } = require("teleproto");
 const { StringSession } = require("teleproto/sessions");
+const { acquireSessionLock } = require("./sessionLock");
 
 const renameJobs = require("./renameTitles");
 
@@ -24,6 +25,8 @@ async function renameVideos(topicId) {
   console.log(`📝 Titles: ${job.titles.length}`);
 
   console.log("Connecting to Telegram...");
+
+  acquireSessionLock();
 
   const client = new TelegramClient(stringSession, apiId, apiHash, {
     connectionRetries: 3,

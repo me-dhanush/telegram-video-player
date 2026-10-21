@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const { TelegramClient, Api } = require("teleproto");
 const { StringSession } = require("teleproto/sessions");
+const { acquireSessionLock, releaseSessionLock } = require("./sessionLock");
 
 console.log("TELEGRAM MODULE LOADED:", __filename);
 
@@ -24,11 +25,24 @@ function createVideoLocation(message) {
 async function createTelegram() {
   console.log("Connecting to Telegram...");
 
+  acquireSessionLock();
+
   const client = new TelegramClient(stringSession, apiId, apiHash, {
     connectionRetries: 3,
   });
 
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (error) {
+    releaseSessionLock();
+    if (error.errorMessage === "AUTH_KEY_DUPLICATED" || error.code === 406) {
+      throw new Error(
+        "Telegram rejected this SESSION because it was used by another connection. Stop every app or script using it, then generate a fresh SESSION and set it in the environment.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 
   console.log("✅ Connected to Telegram");
 

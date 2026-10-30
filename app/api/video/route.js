@@ -4,6 +4,7 @@ import {
 } from "@/src/telegram/telegramClient";
 import { withTelegramSession } from "@/src/telegram/withTelegramSession";
 import { Api } from "teleproto";
+import { randomUUID } from "node:crypto";
 
 export const maxDuration = 300;
 
@@ -249,8 +250,31 @@ async function downloadBlock(
 }
 
 export async function GET(request) {
+  const requestId = randomUUID();
+  const requestStartedAt = Date.now();
+  const requestUrl = new URL(request.url);
+  const messageId = requestUrl.searchParams.get("messageId");
+  const range = request.headers.get("range");
+
+  console.info(
+    JSON.stringify({
+      event: "video_request_start",
+      requestId,
+      messageId,
+      range: range || "full",
+    }),
+  );
+
   try {
     const handleVideoRequest = async (telegram) => {
+    console.info(
+      JSON.stringify({
+        event: "video_telegram_session_ready",
+        requestId,
+        messageId,
+        elapsedMs: Date.now() - requestStartedAt,
+      }),
+    );
     const url = new URL(request.url);
 
     const messageId = Number(url.searchParams.get("messageId"));
@@ -362,6 +386,17 @@ export async function GET(request) {
       blockSize,
     );
 
+    console.info(
+      JSON.stringify({
+        event: "video_telegram_block_received",
+        requestId,
+        messageId,
+        blockStart,
+        bytes: telegramData.length,
+        elapsedMs: Date.now() - requestStartedAt,
+      }),
+    );
+
     console.log("✅ Received:", telegramData.length, "bytes");
 
     // --------------------------------------------------
@@ -399,6 +434,7 @@ export async function GET(request) {
         "Accept-Ranges": "bytes",
 
         "Cache-Control": "no-cache",
+        "X-Video-Request-Id": requestId,
       },
     });
     };
@@ -407,27 +443,49 @@ export async function GET(request) {
       return await handleVideoRequest(await getTelegram());
     }
 
+    console.info(
+      JSON.stringify({ event: "video_session_lock_wait", requestId, messageId }),
+    );
     return await withTelegramSession(handleVideoRequest);
   } catch (error) {
-    console.error("❌ Video request failed:");
-    console.error(error);
+    console.error(
+      JSON.stringify({
+        event: "video_request_failed",
+        requestId,
+        messageId,
+        elapsedMs: Date.now() - requestStartedAt,
+        message: error?.message,
+        errorMessage: error?.errorMessage,
+        code: error?.code,
+        newDc: error?.newDc,
+        cause: error?.cause?.message,
+        stack: error?.stack,
+      }),
+    );
 
     if (error.status === 503) {
       return new Response("Telegram is busy. Retry playback shortly.", {
         status: 503,
-        headers: { "Retry-After": "2" },
+        headers: {
+          "Retry-After": "2",
+          "X-Video-Request-Id": requestId,
+        },
       });
     }
 
     if (isTransientTelegramConnectionError(error)) {
       return new Response("Telegram is temporarily unavailable. Retry playback shortly.", {
         status: 503,
-        headers: { "Retry-After": "2" },
+        headers: {
+          "Retry-After": "2",
+          "X-Video-Request-Id": requestId,
+        },
       });
     }
 
     return new Response("Video request failed", {
       status: 500,
+      headers: { "X-Video-Request-Id": requestId },
     });
   }
 }

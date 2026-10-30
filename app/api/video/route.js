@@ -253,14 +253,14 @@ export async function GET(request) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const requestUrl = new URL(request.url);
-  const messageId = requestUrl.searchParams.get("messageId");
+  const requestMessageId = requestUrl.searchParams.get("messageId");
   const range = request.headers.get("range");
 
   console.info(
     JSON.stringify({
       event: "video_request_start",
       requestId,
-      messageId,
+      messageId: requestMessageId,
       range: range || "full",
     }),
   );
@@ -271,7 +271,7 @@ export async function GET(request) {
       JSON.stringify({
         event: "video_telegram_session_ready",
         requestId,
-        messageId,
+        messageId: requestMessageId,
         elapsedMs: Date.now() - requestStartedAt,
       }),
     );
@@ -444,7 +444,11 @@ export async function GET(request) {
     }
 
     console.info(
-      JSON.stringify({ event: "video_session_lock_wait", requestId, messageId }),
+      JSON.stringify({
+        event: "video_session_lock_wait",
+        requestId,
+        messageId: requestMessageId,
+      }),
     );
     return await withTelegramSession(handleVideoRequest);
   } catch (error) {
@@ -452,7 +456,7 @@ export async function GET(request) {
       JSON.stringify({
         event: "video_request_failed",
         requestId,
-        messageId,
+        messageId: requestMessageId,
         elapsedMs: Date.now() - requestStartedAt,
         message: error?.message,
         errorMessage: error?.errorMessage,

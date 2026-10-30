@@ -58,12 +58,19 @@ async function invokeGetFile(telegram, request, fileKey) {
     try {
       return await telegram.client.invoke(request, dcId);
     } catch (error) {
-      if (error?.constructor?.name === "FileMigrateError") {
-        if (typeof error.newDc !== "number" || error.newDc === dcId) {
+      // Do not rely on the error class name: production bundling can change it.
+      // Telegram exposes the target DC as `newDc` and/or `FILE_MIGRATE_<dc>`.
+      const migratedDc =
+        typeof error?.newDc === "number"
+          ? error.newDc
+          : Number(error?.errorMessage?.match(/^FILE_MIGRATE_(\d+)$/)?.[1]);
+
+      if (Number.isInteger(migratedDc) && migratedDc > 0) {
+        if (migratedDc === dcId) {
           throw error;
         }
 
-        dcId = error.newDc;
+        dcId = migratedDc;
         fileDcIds.set(fileKey, dcId);
         console.log(`🔁 Telegram file is on DC ${dcId}; retrying there.`);
         continue;

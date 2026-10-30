@@ -199,23 +199,32 @@ export default function LecturePlayer() {
 
     const searchParams = new URLSearchParams(window.location.search);
     const selectedMessageId = Number(searchParams.get("messageId")) || 19;
+    const selectedChatId = searchParams.get("telegramChatId");
 
     setMessageId(selectedMessageId);
 
     video.preload = "metadata";
-    video.src = `/api/video?messageId=${selectedMessageId}`;
-    video.load();
+    if (selectedChatId) {
+      video.src = `/api/video?messageId=${selectedMessageId}&telegramChatId=${encodeURIComponent(selectedChatId)}`;
+      video.load();
+    }
 
     fetch("/api/videos")
       .then((response) => response.json())
       .then((videos) => {
         const selectedVideo = videos.find(
-          (video) => video.id === selectedMessageId,
+          (video) =>
+            video.id === selectedMessageId &&
+            (!selectedChatId || video.telegramChatId === selectedChatId),
         );
 
         if (selectedVideo) {
           setLectureTitle(selectedVideo.name);
           setTelegramChatId(selectedVideo.telegramChatId);
+          if (!selectedChatId) {
+            video.src = `/api/video?messageId=${selectedMessageId}&telegramChatId=${encodeURIComponent(selectedVideo.telegramChatId)}`;
+            video.load();
+          }
         }
       });
 

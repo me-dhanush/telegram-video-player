@@ -6,6 +6,9 @@ require("dotenv").config();
 const { TelegramClient } = require("teleproto");
 const { StringSession } = require("teleproto/sessions");
 const { acquireSessionLock } = require("./sessionLock");
+const {
+  acquireDistributedSessionLock,
+} = require("./distributedSessionLock");
 
 const renameJobs = require("./renameTitles");
 
@@ -26,13 +29,21 @@ async function renameVideos(topicId) {
 
   console.log("Connecting to Telegram...");
 
-  acquireSessionLock();
+  const releaseDistributedLock = await acquireDistributedSessionLock();
+  let releaseLocalLock;
+  try {
+    releaseLocalLock = acquireSessionLock();
+  } catch (error) {
+    await releaseDistributedLock();
+    throw error;
+  }
 
   const client = new TelegramClient(stringSession, apiId, apiHash, {
     connectionRetries: 3,
   });
 
-  await client.connect();
+  try {
+    await client.connect();
 
   console.log("✅ Connected to Telegram");
 
@@ -96,7 +107,11 @@ async function renameVideos(topicId) {
   console.log("");
   console.log(`🎉 ${job.subject} renamed successfully!`);
 
-  await client.disconnect();
+  } finally {
+    if (client.connected) await client.disconnect().catch(() => {});
+    releaseLocalLock();
+    await releaseDistributedLock();
+  }
 }
 
 const topicId = process.argv[2];

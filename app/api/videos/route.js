@@ -1,27 +1,37 @@
 import { NextResponse } from "next/server";
-import { getTelegram } from "@/src/telegram/telegramClient";
 import { prisma } from "@/lib/prisma";
+
+export const maxDuration = 300;
 
 export async function GET() {
   try {
-    const telegram = await getTelegram();
+    const listTelegramVideos = (telegram) =>
+      telegram.videos.map(
+        ({ id, telegramChatId, chatName, name, topicId, topicName }) => ({
+          id,
+          telegramChatId,
+          chatName,
+          name,
+          topicId,
+          topicName,
+        }),
+      );
+
+    let videos;
+    if (process.env.TELEGRAM_LOCAL_SERVICE === "true") {
+      const { getTelegram } = await import("@/src/telegram/telegramClient");
+      videos = listTelegramVideos(await getTelegram());
+    } else {
+      const { withTelegramSession } = await import(
+        "@/src/telegram/withTelegramSession"
+      );
+      videos = await withTelegramSession(listTelegramVideos);
+    }
+
     const videosInDatabase = await prisma.video.findMany();
 
     console.log("✅ Prisma connected!");
     console.log("Videos in database:", videosInDatabase.length);
-
-    // Keep Telegram document and file-location credentials on the server.
-    // The player only needs these fields to display/select a video and load
-    // its notes; /api/video performs the actual stream lookup server-side.
-    const videos = telegram.videos.map(
-      ({ id, telegramChatId, name, topicId, topicName }) => ({
-        id,
-        telegramChatId,
-        name,
-        topicId,
-        topicName,
-      }),
-    );
 
     return NextResponse.json(videos);
   } catch (error) {
@@ -32,7 +42,7 @@ export async function GET() {
         error: error.message,
         stack: error.stack,
       },
-      { status: 500 },
+      { status: error.status || 500 },
     );
   }
 }

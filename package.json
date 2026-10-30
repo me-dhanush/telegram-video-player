@@ -4,9 +4,10 @@
   "private": true,
   "description": "Next.js lecture player with the existing Telegram streaming backend",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development node server.js",
+    "postinstall": "node scripts/patch-videojs-gesture-window.js",
+    "dev": "cross-env NODE_ENV=development TELEGRAM_LOCAL_SERVICE=true node server.js",
     "build": "prisma generate && next build --webpack",
-    "start": "cross-env NODE_ENV=production node server.js",
+    "start": "cross-env NODE_ENV=production TELEGRAM_LOCAL_SERVICE=true node server.js",
     "rename-videos": "node src/telegram/videoRenamer.js"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@tailwindcss/postcss": "^4.3.3",
+    "@videojs/react": "10.2.0",
     "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",
     "express": "^5.1.0",

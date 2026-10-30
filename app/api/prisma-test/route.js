@@ -1,24 +1,34 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTelegram } from "@/src/telegram/telegramClient";
+
+export const maxDuration = 300;
 
 export async function GET() {
   try {
-    const telegram = await getTelegram();
+    let videos;
+    if (process.env.TELEGRAM_LOCAL_SERVICE === "true") {
+      const { getTelegram } = await import("@/src/telegram/telegramClient");
+      videos = (await getTelegram()).videos;
+    } else {
+      const { withTelegramSession } = await import(
+        "@/src/telegram/withTelegramSession"
+      );
+      videos = await withTelegramSession((telegram) => telegram.videos);
+    }
 
     let savedCount = 0;
 
-    for (const video of telegram.videos) {
+    for (const video of videos) {
       await prisma.video.upsert({
         where: {
           telegramChatId_messageId: {
-            telegramChatId: telegram.telegramChatId,
+            telegramChatId: video.telegramChatId,
             messageId: video.id,
           },
         },
         update: {},
         create: {
-          telegramChatId: telegram.telegramChatId,
+          telegramChatId: video.telegramChatId,
           messageId: video.id,
         },
       });
@@ -45,7 +55,7 @@ export async function GET() {
         success: false,
         error: error.message,
       },
-      { status: 500 },
+      { status: error.status || 500 },
     );
   }
 }

@@ -1,6 +1,11 @@
-import { ensureTelegramConnected, getTelegram } from "@/src/telegram/telegramClient";
-
+import {
+  ensureTelegramConnected,
+  getTelegram,
+} from "@/src/telegram/telegramClient";
+import { withTelegramSession } from "@/src/telegram/withTelegramSession";
 import { Api } from "teleproto";
+
+export const maxDuration = 300;
 
 const TELEGRAM_CHUNK_SIZE = 1024 * 1024; // 1 MB
 const MAX_CACHED_BLOCK_BYTES = 32 * 1024 * 1024;
@@ -9,6 +14,20 @@ const downloadingBlocks = new Map();
 const downloadedBlocks = new Map();
 let downloadedBlockBytes = 0;
 const fileDcIds = new Map();
+
+function isTransientTelegramConnectionError(error) {
+  const message = [error?.message, error?.cause?.message, error?.toString()]
+    .filter(Boolean)
+    .join(" ");
+
+  return /connection .* (?:lost|closed|timed out)|netsocket.*closed|tcpfull timed out|ping failed|\btimeout\b|cannot send requests while disconnected|failed to reconnect/i.test(
+    message,
+  );
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 function rememberDownloadedBlock(key, data) {
   if (data.length > MAX_CACHED_BLOCK_BYTES) return;
@@ -35,21 +54,35 @@ async function invokeGetFile(telegram, request, fileKey) {
   // automatically follow FILE_MIGRATE, so retry explicitly on that DC.
   let dcId = fileDcIds.get(fileKey);
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       return await telegram.client.invoke(request, dcId);
     } catch (error) {
-      if (
-        error?.constructor?.name !== "FileMigrateError" ||
-        typeof error.newDc !== "number" ||
-        error.newDc === dcId
-      ) {
+      if (error?.constructor?.name === "FileMigrateError") {
+        if (typeof error.newDc !== "number" || error.newDc === dcId) {
+          throw error;
+        }
+
+        dcId = error.newDc;
+        fileDcIds.set(fileKey, dcId);
+        console.log(`🔁 Telegram file is on DC ${dcId}; retrying there.`);
+        continue;
+      }
+
+      if (!isTransientTelegramConnectionError(error) || attempt === 4) {
         throw error;
       }
 
-      dcId = error.newDc;
-      fileDcIds.set(fileKey, dcId);
-      console.log(`🔁 Telegram file is on DC ${dcId}; retrying there.`);
+      console.warn(
+        `⚠️ Telegram connection failed while reading ${fileKey}; retry ${attempt + 1}/4.`,
+        error?.message || error,
+      );
+
+      if (!telegram.client.connected) {
+        await ensureTelegramConnected(telegram.client);
+      }
+
+      await wait(500 * 2 ** attempt);
     }
   }
 
@@ -63,7 +96,7 @@ async function downloadBlock(
   blockStart,
   blockSize,
 ) {
-  const key = `${telegram.telegramChatId}:${messageId}:${video.videoDocument.id}:${blockStart}`;
+  const key = `${video.telegramChatId}:${messageId}:${video.videoDocument.id}:${blockStart}`;
 
   const cachedBlock = downloadedBlocks.get(key);
   if (cachedBlock) {
@@ -125,7 +158,7 @@ async function downloadBlock(
         console.log("🔄 Refreshing message:", messageId);
 
         const messages = await telegram.client.getMessages(
-          telegram.telegramEntity,
+          video.telegramEntity,
           {
             ids: [messageId],
           },
@@ -210,9 +243,11 @@ async function downloadBlock(
 
 export async function GET(request) {
   try {
+    const handleVideoRequest = async (telegram) => {
     const url = new URL(request.url);
 
     const messageId = Number(url.searchParams.get("messageId"));
+    const telegramChatId = url.searchParams.get("telegramChatId");
 
     if (!messageId) {
       return new Response("Missing messageId", {
@@ -220,9 +255,9 @@ export async function GET(request) {
       });
     }
 
-    const telegram = await getTelegram();
-
-    const video = telegram.videos.find((video) => video.id === messageId);
+    const video = telegram.videos.find(
+      (video) => video.id === messageId && (!telegramChatId || video.telegramChatId === telegramChatId),
+    );
 
     if (!video) {
       return new Response("Video not found", {
@@ -293,27 +328,18 @@ export async function GET(request) {
     console.log("Browser start:", browserStart);
     console.log("Telegram block:", `${blockStart} → ${blockEnd - 1}`);
 
-    // Fetch one block ahead while this one is being sent to the browser. The
-    // browser's next range request can then use the in-memory cache instead of
-    // waiting for another full Telegram round trip.
+    // Keep background prefetch in local single-process mode only. A Vercel
+    // request must finish all Telegram work before releasing its shared lock.
     const nextBlockStart = blockEnd;
-    if (nextBlockStart < fileSize) {
-      const nextBlockSize = Math.min(
-        TELEGRAM_CHUNK_SIZE,
-        fileSize - nextBlockStart,
-      );
-
+    if (process.env.TELEGRAM_LOCAL_SERVICE === "true" && nextBlockStart < fileSize) {
       void downloadBlock(
         telegram,
         video,
         messageId,
         nextBlockStart,
-        nextBlockSize,
+        Math.min(TELEGRAM_CHUNK_SIZE, fileSize - nextBlockStart),
       ).catch((error) => {
-        console.warn(
-          `Video prefetch failed for message ${messageId} at ${nextBlockStart}:`,
-          error,
-        );
+        console.warn(`Video prefetch failed for message ${messageId}:`, error);
       });
     }
 
@@ -368,9 +394,30 @@ export async function GET(request) {
         "Cache-Control": "no-cache",
       },
     });
+    };
+
+    if (process.env.TELEGRAM_LOCAL_SERVICE === "true") {
+      return await handleVideoRequest(await getTelegram());
+    }
+
+    return await withTelegramSession(handleVideoRequest);
   } catch (error) {
     console.error("❌ Video request failed:");
     console.error(error);
+
+    if (error.status === 503) {
+      return new Response("Telegram is busy. Retry playback shortly.", {
+        status: 503,
+        headers: { "Retry-After": "2" },
+      });
+    }
+
+    if (isTransientTelegramConnectionError(error)) {
+      return new Response("Telegram is temporarily unavailable. Retry playback shortly.", {
+        status: 503,
+        headers: { "Retry-After": "2" },
+      });
+    }
 
     return new Response("Video request failed", {
       status: 500,

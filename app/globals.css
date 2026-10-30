@@ -2,12 +2,183 @@
 
 @import "tailwindcss";
 @import "@heroui/styles";
+@import "@videojs/react/video/neutral-skin.css";
 
 html,
 body {
     font-family: "DM Sans", sans-serif;
     width: 100%;
     height: 100%;
+}
+
+.videojs-test-page {
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
+  overflow: hidden;
+  color: #fff;
+  background: #000;
+}
+
+.videojs-test-skin {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  aspect-ratio: auto;
+}
+
+.videojs-test-skin:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  aspect-ratio: auto;
+}
+
+.videojs-test-content {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.videojs-test-video-column {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.videojs-test-video-column video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.videojs-test-skin-with-notes .video-controls-backdrop {
+  inset-inline-end: 320px;
+}
+
+.videojs-test-skin-with-notes .video-controls-content {
+  inset-inline-end: calc(320px + var(--media-spacing, 0.5rem) * 2);
+}
+
+.videojs-test-player-actions {
+  position: absolute;
+  z-index: 40;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.videojs-test-player-actions.is-visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.videojs-test-skin-paused-controls-hidden .video-controls-content,
+.videojs-test-skin-paused-controls-hidden .video-controls-backdrop,
+.videojs-test-skin-paused-controls-hidden .media-title,
+.videojs-test-skin-paused-controls-hidden .videojs-test-player-actions {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.videojs-test-player-actions a,
+.videojs-test-player-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--media-control-size, 40px);
+  height: var(--media-control-size, 40px);
+  min-height: 0;
+  padding: 0;
+  color: var(--media-controls-foreground, #fff);
+  background: transparent;
+  border: 0;
+  border-radius: var(--media-control-radius, 8px);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--media-duration, 150ms), color var(--media-duration, 150ms), scale var(--media-duration, 150ms);
+}
+
+.videojs-test-player-actions a:hover,
+.videojs-test-player-actions button:hover,
+.videojs-test-player-actions a:focus-visible,
+.videojs-test-player-actions button:focus-visible {
+  color: var(--media-accent-foreground, #111);
+  background: var(--media-accent, #fff);
+}
+
+.videojs-test-player-actions a:active,
+.videojs-test-player-actions button:active {
+  scale: 0.97;
+}
+
+.videojs-test-player-actions a:focus-visible,
+.videojs-test-player-actions button:focus-visible {
+  outline: 2px solid var(--media-ring, #fff);
+  outline-offset: 2px;
+}
+
+.videojs-test-player-actions .videojs-notes-icon-button {
+  appearance: none;
+}
+
+.videojs-notes-icon-button svg,
+.videojs-library-icon-button svg {
+  width: var(--media-icon-size, 24px);
+  height: var(--media-icon-size, 24px);
+  filter: drop-shadow(0 1px 0 var(--media-shadow-current-color, transparent));
+}
+
+@media (max-width: 700px) {
+  .videojs-test-content {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .videojs-test-content #side-panel {
+    width: 100%;
+    min-height: 360px;
+    border: 1px solid rgb(255 255 255 / 8%);
+  }
+
+  .videojs-test-skin-with-notes .video-controls-backdrop {
+    inset-inline-end: 0;
+  }
+
+  .videojs-test-skin-with-notes .video-controls-content {
+    inset-inline-end: var(--media-spacing, 0.5rem);
+  }
+
+}
+
+.videojs-test-message,
+.videojs-test-error {
+  margin: 0;
+  color: #aaa;
+  font-size: 14px;
+}
+
+.videojs-test-error {
+  color: #ff8585;
 }
 
 body {

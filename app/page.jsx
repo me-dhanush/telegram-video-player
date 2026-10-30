@@ -7,6 +7,14 @@ import { Button, Drawer, Label, SearchField } from "@heroui/react";
 export default function VideosPage() {
   const router = useRouter();
 
+  function openVideo(video) {
+    const params = new URLSearchParams({
+      messageId: String(video.id),
+      telegramChatId: String(video.telegramChatId),
+    });
+    router.push(`/player-videojs?${params.toString()}`);
+  }
+
   const [videos, setVideos] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
@@ -39,6 +47,19 @@ export default function VideosPage() {
 
   const topicGroups = Object.entries(groupedVideos);
 
+  const chatGroups = topicGroups.reduce((groups, topicGroup) => {
+    const [topicId, topicVideos] = topicGroup;
+    const chatId = topicVideos[0]?.telegramChatId || "unknown";
+    if (!groups[chatId]) {
+      groups[chatId] = {
+        name: topicVideos[0]?.chatName || "Telegram chat",
+        topics: [],
+      };
+    }
+    groups[chatId].topics.push([topicId, topicVideos]);
+    return groups;
+  }, {});
+
   const selectedTopicVideos = groupedVideos[selectedTopicId] || [];
 
   const selectedTopicName =
@@ -50,7 +71,7 @@ export default function VideosPage() {
       <div className="h-full bg-white flex flex-col">
         {/* Main content */}
         <div className="flex-1 min-h-0 min-w-0 flex flex-col md:flex-row">
-          <aside className="hidden md:flex w-72 gap-2 rounded-e-3xl p-2 shrink-0 border-r bg-slate-100 text-slate-700 flex-col min-h-0">
+          <aside className="hidden md:flex w-72 gap-2 rounded-e-3xl p-2 shrink-0 border-r bg-slate-100 text-slate-700 flex-col min-h-0 overflow-y-auto">
             {/* Sidebar header */}
 
             <div className="px-5 py-3 flex gap-2 items-center">
@@ -78,7 +99,7 @@ export default function VideosPage() {
 
             {/* Categories */}
 
-            <div className="border-t px-4 pt-5">
+            <div className="border-t px-4 pt-5 shrink-0">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-xs text-gray-400 uppercase">
                   Subjects
@@ -88,7 +109,12 @@ export default function VideosPage() {
               {/* Subjects */}
 
               <div className="space-y-1">
-                {topicGroups.map(([topicId, topicVideos]) => {
+                {Object.entries(chatGroups).map(([chatId, chat]) => (
+                  <div key={chatId} className="mb-4">
+                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {chat.name}
+                    </div>
+                    {chat.topics.map(([topicId, topicVideos]) => {
                   const topicName =
                     topicVideos[0]?.topicName || `Topic ${topicId}`;
 
@@ -129,13 +155,15 @@ export default function VideosPage() {
                       <span>›</span>
                     </button>
                   );
-                })}
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
 
             {/* Latest lectures */}
 
-            <div className="border-t mt-5 px-2 pt-5 flex-1 overflow-y-auto">
+            <div className="border-t mt-5 px-2 pt-5 shrink-0">
               <div className="flex items-center justify-between ms-3 mb-4">
                 <span className="text-xs text-gray-400 uppercase">
                   Latest Lectures
@@ -145,8 +173,8 @@ export default function VideosPage() {
               <div className="space-y-2">
                 {videos.slice(0, 10).map((video) => (
                   <button
-                    key={video.id}
-                    onClick={() => router.push(`/player?messageId=${video.id}`)}
+                    key={`${video.telegramChatId}:${video.id}`}
+                    onClick={() => openVideo(video)}
                     className="w-full cursor-pointer flex items-center gap-3 p-2 rounded-lg bg-white hover:bg-gray-50 text-left"
                   >
                     {/* File icon */}
@@ -228,7 +256,12 @@ export default function VideosPage() {
                         </div>
 
                         <div className="space-y-1">
-                          {topicGroups.map(([topicId, topicVideos]) => {
+                          {Object.entries(chatGroups).map(([chatId, chat]) => (
+                            <div key={chatId} className="mb-4">
+                              <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                {chat.name}
+                              </div>
+                              {chat.topics.map(([topicId, topicVideos]) => {
                             const topicName =
                               topicVideos[0]?.topicName || `Topic ${topicId}`;
 
@@ -264,7 +297,9 @@ export default function VideosPage() {
                                 <span>›</span>
                               </button>
                             );
-                          })}
+                              })}
+                            </div>
+                          ))}
                         </div>
                       </div>
 
@@ -279,10 +314,8 @@ export default function VideosPage() {
                         <div className="space-y-2">
                           {videos.slice(0, 10).map((video) => (
                             <button
-                              key={video.id}
-                              onClick={() =>
-                                router.push(`/player?messageId=${video.id}`)
-                              }
+                              key={`${video.telegramChatId}:${video.id}`}
+                              onClick={() => openVideo(video)}
                               className="w-full cursor-pointer flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
                             >
                               <div className="w-9 h-9 shrink-0 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -328,8 +361,8 @@ export default function VideosPage() {
                 )
                 .map((video, index) => (
                   <button
-                    key={video.id}
-                    onClick={() => router.push(`/player?messageId=${video.id}`)}
+                    key={`${video.telegramChatId}:${video.id}`}
+                    onClick={() => openVideo(video)}
                     className="w-full cursor-pointer flex items-center gap-4 px-6 py-4 border-b text-left hover:bg-gray-50"
                   >
                     {/* Lecture number */}

@@ -10,6 +10,8 @@ const apiId = Number(process.env.API_ID);
 const apiHash = process.env.API_HASH;
 
 const stringSession = new StringSession(process.env.SESSION);
+const telegramVideoCache =
+  globalThis.__telegramVideoCache || (globalThis.__telegramVideoCache = new Map());
 
 function createVideoLocation(message) {
   const document = message.media.document;
@@ -22,7 +24,69 @@ function createVideoLocation(message) {
   });
 }
 
-async function createTelegram() {
+async function loadVideoCatalog(telegram) {
+  const videos = [];
+
+  for (const chat of telegram.chats) {
+    let topics = [];
+    try {
+      const forumTopics = await telegram.client.invoke(
+        new Api.messages.GetForumTopics({
+          peer: chat.entity,
+          q: "",
+          offsetDate: 0,
+          offsetId: 0,
+          offsetTopic: 0,
+          limit: 100,
+        }),
+      );
+      topics = forumTopics.topics || [];
+    } catch {
+      // Regular group chats do not have forum topics.
+      console.log(`No forum topics for ${chat.name}`);
+    }
+
+    for await (const message of telegram.client.iterMessages(chat.entity, {
+      filter: new Api.InputMessagesFilterVideo(),
+    })) {
+      const document = message?.media?.document;
+      if (!document?.mimeType?.startsWith("video/")) continue;
+
+      const topicId = message.replyTo?.replyToMsgId;
+      const topic = topics.find((item) => item.id === topicId);
+      videos.push({
+        id: message.id,
+        telegramChatId: chat.id.toString(),
+        chatName: chat.name,
+        name: message.message || `Video ${message.id}`,
+        messageText: message.message || "",
+        topicId: `${chat.id}:${topicId ?? "main"}`,
+        topicName: topic?.title || chat.name,
+        telegramEntity: chat.entity,
+        videoDocument: document,
+        videoLocation: createVideoLocation(message),
+      });
+    }
+  }
+
+  telegram.videos = videos;
+  telegram.videosLoaded = true;
+  console.log(`🎥 Found ${videos.length} videos in recent messages`);
+}
+
+async function ensureVideoCatalog(telegram) {
+  if (telegram.videosLoaded) return;
+
+  if (!telegram.catalogPromise) {
+    telegram.catalogPromise = loadVideoCatalog(telegram).finally(() => {
+      telegram.catalogPromise = null;
+    });
+  }
+
+  await telegram.catalogPromise;
+}
+
+async function createTelegram({ loadVideos = true } = {}) {
   console.log("Connecting to Telegram...");
 
   const releaseLocalSessionLock = acquireSessionLock();
@@ -46,58 +110,19 @@ async function createTelegram() {
       return dialog;
     });
 
-    const videos = [];
-    for (const chat of chats) {
-      let topics = [];
-      try {
-        const forumTopics = await client.invoke(
-          new Api.messages.GetForumTopics({
-            peer: chat.entity,
-            q: "",
-            offsetDate: 0,
-            offsetId: 0,
-            offsetTopic: 0,
-            limit: 100,
-          }),
-        );
-        topics = forumTopics.topics || [];
-      } catch (error) {
-        // Regular group chats do not have forum topics.
-        console.log(`No forum topics for ${chat.name}`);
-      }
-
-      for await (const message of client.iterMessages(chat.entity, {
-        filter: new Api.InputMessagesFilterVideo(),
-      })) {
-        const document = message?.media?.document;
-        if (!document?.mimeType?.startsWith("video/")) continue;
-
-        const topicId = message.replyTo?.replyToMsgId;
-        const topic = topics.find((item) => item.id === topicId);
-        videos.push({
-          id: message.id,
-          telegramChatId: chat.id.toString(),
-          chatName: chat.name,
-          name: message.message || `Video ${message.id}`,
-          topicId: `${chat.id}:${topicId ?? "main"}`,
-          topicName: topic?.title || chat.name,
-          telegramEntity: chat.entity,
-          videoDocument: document,
-          videoLocation: createVideoLocation(message),
-        });
-      }
-    }
-
-    console.log(`🎥 Found ${videos.length} videos in recent messages`);
-
-    return {
+    const telegram = {
       client,
-      videos,
+      chats,
+      videos: [],
+      videosLoaded: false,
       releaseSessionLock: releaseLocalSessionLock,
 
       // Used by video/route.js when refreshing a file reference.
       createVideoLocation,
     };
+
+    if (loadVideos) await ensureVideoCatalog(telegram);
+    return telegram;
   } catch (error) {
     if (client.connected) await client.disconnect().catch(() => {});
     releaseSessionLock();
@@ -115,9 +140,9 @@ async function createTelegram() {
 // development module reloads do not create another client with the same key.
 let telegramPromise = globalThis.__telegramPromise || null;
 
-function startTelegram() {
+function startTelegram(options) {
   if (!telegramPromise) {
-    telegramPromise = createTelegram().catch((error) => {
+    telegramPromise = createTelegram(options).catch((error) => {
       telegramPromise = null;
       globalThis.__telegramPromise = null;
       throw error;
@@ -140,8 +165,8 @@ async function ensureTelegramConnected(client) {
   await globalThis.__telegramReconnectPromise;
 }
 
-async function getTelegram() {
-  const telegram = await startTelegram();
+async function getTelegram({ loadVideos = true } = {}) {
+  const telegram = await startTelegram({ loadVideos });
 
   if (!telegram.client.connected) {
     console.log("⚠️ Telegram disconnected. Reconnecting...");
@@ -157,11 +182,70 @@ async function getTelegram() {
     console.log("✅ Telegram reconnected");
   }
 
+  if (loadVideos) await ensureVideoCatalog(telegram);
+
   return telegram;
+}
+
+async function getTelegramVideo(telegram, messageId, telegramChatId) {
+  if (telegram.videosLoaded) {
+    return telegram.videos.find(
+      (video) =>
+        video.id === messageId &&
+        (!telegramChatId || video.telegramChatId === telegramChatId),
+    );
+  }
+
+  if (!telegramChatId) {
+    await ensureVideoCatalog(telegram);
+    return telegram.videos.find((video) => video.id === messageId);
+  }
+
+  const cacheKey = `${telegramChatId}:${messageId}`;
+  const cachedVideo = telegramVideoCache.get(cacheKey);
+  if (cachedVideo) {
+    telegramVideoCache.delete(cacheKey);
+    telegramVideoCache.set(cacheKey, cachedVideo);
+    return cachedVideo;
+  }
+
+  const chat = telegram.chats.find(
+    (item) => item.id.toString() === String(telegramChatId),
+  );
+  if (!chat) return undefined;
+
+  const messages = await telegram.client.getMessages(chat.entity, {
+    ids: [messageId],
+  });
+  const message = messages?.[0];
+  const document = message?.media?.document;
+  if (!document?.mimeType?.startsWith("video/")) return undefined;
+
+  const topicId = message.replyTo?.replyToMsgId;
+  const video = {
+    id: message.id,
+    telegramChatId: chat.id.toString(),
+    chatName: chat.name,
+    name: message.message || `Video ${message.id}`,
+    messageText: message.message || "",
+    topicId: `${chat.id}:${topicId ?? "main"}`,
+    topicName: chat.name,
+    telegramEntity: chat.entity,
+    videoDocument: document,
+    videoLocation: createVideoLocation(message),
+  };
+
+  telegramVideoCache.set(cacheKey, video);
+  while (telegramVideoCache.size > 100) {
+    telegramVideoCache.delete(telegramVideoCache.keys().next().value);
+  }
+
+  return video;
 }
 
 module.exports = {
   startTelegram,
   getTelegram,
+  getTelegramVideo,
   ensureTelegramConnected,
 };

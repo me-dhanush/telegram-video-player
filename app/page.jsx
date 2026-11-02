@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Drawer, Label, SearchField } from "@heroui/react";
 
 export default function VideosPage() {
@@ -11,6 +11,7 @@ export default function VideosPage() {
     const params = new URLSearchParams({
       messageId: String(video.id),
       telegramChatId: String(video.telegramChatId),
+      title: video.name,
     });
     router.push(`/player-videojs?${params.toString()}`);
   }
@@ -18,6 +19,31 @@ export default function VideosPage() {
   const [videos, setVideos] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
+  const [localVideos, setLocalVideos] = useState([]);
+  const localVideoInputRef = useRef(null);
+
+  function addLocalVideos(event) {
+    const selected = Array.from(event.target.files || []);
+    console.info("[local-video] File picker returned:", selected.map(({ name, type, size }) => ({ name, type, size })));
+    const additions = selected.filter((file) => file.type.startsWith("video/") || /\.(mp4|m4v|webm|mov|ogv|ogg|mkv)$/i.test(file.name));
+    if (!additions.length) console.error("[local-video] No supported video file was selected.");
+    setLocalVideos((current) => [...current, ...additions]);
+    if (additions[0]) openLocalVideo(additions[0]);
+    event.target.value = "";
+  }
+
+  function openLocalVideo(file) {
+    try {
+      const url = URL.createObjectURL(file);
+      console.info("[local-video] Opening selected file:", { name: file.name, type: file.type, size: file.size, url });
+      sessionStorage.setItem("local-video-source", url);
+      sessionStorage.setItem("local-video-name", file.name);
+      router.push("/player-videojs?local=1");
+      console.info("[local-video] Navigated to local player route.");
+    } catch (error) {
+      console.error("[local-video] Could not open selected file:", error);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/videos")
@@ -77,6 +103,8 @@ export default function VideosPage() {
             <div className="px-5 py-3 flex gap-2 items-center">
               <h2 className="text-lg font-semibold">Lectures</h2>
             </div>
+            <button type="button" onClick={() => localVideoInputRef.current?.click()} className="mx-4 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white">Choose local videos</button>
+            {localVideos.map((file, index) => <button type="button" key={`${file.name}-${index}`} onClick={() => openLocalVideo(file)} className="mx-4 truncate rounded px-2 py-1 text-left text-sm hover:bg-white">▶ {file.name}</button>)}
 
             {/* Search */}
 
@@ -205,6 +233,9 @@ export default function VideosPage() {
           </aside>
           {/* Mobile header */}
           <div className="md:hidden border-b px-4 py-3 flex items-center gap-3">
+            <button type="button" onClick={() => localVideoInputRef.current?.click()} className="shrink-0 rounded-lg bg-sky-500 px-3 py-2 text-xs font-medium text-white">Open local video</button>
+            <input ref={localVideoInputRef} type="file" accept="video/*,.mp4,.m4v,.webm,.mov,.ogv" aria-label="Choose local video file" className="hidden" onChange={addLocalVideos} />
+            {localVideos.length > 0 && <select aria-label="Selected local videos" defaultValue="" onChange={(event) => { const file = localVideos[Number(event.target.value)]; if (file) openLocalVideo(file); }} className="max-w-32 truncate rounded border px-2 py-2 text-xs"><option value="">Open selected…</option>{localVideos.map((file, index) => <option key={`${file.name}-${index}`} value={index}>{file.name}</option>)}</select>}
             <Drawer>
               <Button isIconOnly variant="secondary">
                 <svg

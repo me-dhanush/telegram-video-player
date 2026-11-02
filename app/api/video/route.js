@@ -1,6 +1,7 @@
 import {
   ensureTelegramConnected,
   getTelegram,
+  getTelegramVideo,
 } from "@/src/telegram/telegramClient";
 import { withTelegramSession } from "@/src/telegram/withTelegramSession";
 import { Api } from "teleproto";
@@ -50,10 +51,11 @@ function rememberDownloadedBlock(key, data) {
   downloadedBlockBytes += data.length;
 }
 
-async function invokeGetFile(telegram, request, fileKey) {
+async function invokeGetFile(telegram, request, fileKey, initialDcId) {
   // Telegram can move a file to another DC. A direct invoke does not
-  // automatically follow FILE_MIGRATE, so retry explicitly on that DC.
-  let dcId = fileDcIds.get(fileKey);
+  // automatically follow FILE_MIGRATE. The document already includes its DC,
+  // which avoids a failed request and round trip on first playback.
+  let dcId = fileDcIds.get(fileKey) ?? initialDcId;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -152,6 +154,7 @@ async function downloadBlock(
           precise: true,
         }),
         messageId,
+        video.videoDocument.dcId,
       );
     } catch (error) {
       // --------------------------------------------------
@@ -204,6 +207,7 @@ async function downloadBlock(
             precise: true,
           }),
           messageId,
+          freshMessage.media.document.dcId,
         );
       }
 
@@ -229,6 +233,7 @@ async function downloadBlock(
             precise: true,
           }),
           messageId,
+          video.videoDocument.dcId,
         );
       } else {
         throw error;
@@ -286,8 +291,19 @@ export async function GET(request) {
       });
     }
 
-    const video = telegram.videos.find(
-      (video) => video.id === messageId && (!telegramChatId || video.telegramChatId === telegramChatId),
+    const messageLookupStartedAt = Date.now();
+    const video = await getTelegramVideo(
+      telegram,
+      messageId,
+      telegramChatId,
+    );
+    console.info(
+      JSON.stringify({
+        event: "video_message_ready",
+        requestId,
+        messageId,
+        elapsedMs: Date.now() - messageLookupStartedAt,
+      }),
     );
 
     if (!video) {
@@ -362,7 +378,11 @@ export async function GET(request) {
     // Keep background prefetch in local single-process mode only. A Vercel
     // request must finish all Telegram work before releasing its shared lock.
     const nextBlockStart = blockEnd;
-    if (process.env.TELEGRAM_LOCAL_SERVICE === "true" && nextBlockStart < fileSize) {
+    if (
+      process.env.TELEGRAM_LOCAL_SERVICE === "true" &&
+      browserStart > 0 &&
+      nextBlockStart < fileSize
+    ) {
       void downloadBlock(
         telegram,
         video,
@@ -440,7 +460,7 @@ export async function GET(request) {
     };
 
     if (process.env.TELEGRAM_LOCAL_SERVICE === "true") {
-      return await handleVideoRequest(await getTelegram());
+      return await handleVideoRequest(await getTelegram({ loadVideos: false }));
     }
 
     console.info(
@@ -450,7 +470,9 @@ export async function GET(request) {
         messageId: requestMessageId,
       }),
     );
-    return await withTelegramSession(handleVideoRequest);
+    return await withTelegramSession(handleVideoRequest, {
+      loadVideos: false,
+    });
   } catch (error) {
     console.error(
       JSON.stringify({

@@ -3,7 +3,10 @@ const next = require("next");
 
 require("dotenv").config();
 
-const { getTelegram } = require("./src/telegram/telegramClient");
+const {
+  getTelegram,
+  getTelegramVideo,
+} = require("./src/telegram/telegramClient");
 const { createVideoStreamHandler } = require("./src/video/videoStream");
 const {
   acquireDistributedSessionLock,
@@ -24,15 +27,15 @@ async function main() {
 
   try {
     const app = express();
-    const telegram = await getTelegram();
+    const telegram = await getTelegram({ loadVideos: false });
 
-    app.get("/video", (request, response) => {
+    app.get("/video", async (request, response) => {
       const messageId = Number(request.query.messageId);
       const telegramChatId = request.query.telegramChatId;
-      const video = telegram.videos.find(
-        (item) =>
-          item.id === messageId &&
-          (!telegramChatId || item.telegramChatId === telegramChatId),
+      const video = await getTelegramVideo(
+        telegram,
+        messageId,
+        telegramChatId,
       );
       if (!video) return response.status(404).send("Video not found");
 
@@ -43,19 +46,24 @@ async function main() {
       })(request, response);
     });
 
-    app.get("/api/videos", (_request, response) => {
-      response.json(
-        telegram.videos.map(
-          ({ id, telegramChatId, chatName, name, topicId, topicName }) => ({
-            id,
-            telegramChatId,
-            chatName,
-            name,
-            topicId,
-            topicName,
-          }),
-        ),
-      );
+    app.get("/api/videos", async (_request, response, next) => {
+      try {
+        const catalog = await getTelegram();
+        response.json(
+          catalog.videos.map(
+            ({ id, telegramChatId, chatName, name, topicId, topicName }) => ({
+              id,
+              telegramChatId,
+              chatName,
+              name,
+              topicId,
+              topicName,
+            }),
+          ),
+        );
+      } catch (error) {
+        next(error);
+      }
     });
 
     app.use((request, response) => handle(request, response));

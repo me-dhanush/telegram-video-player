@@ -71,6 +71,10 @@ body {
   inset-inline-end: calc(320px + var(--media-spacing, 0.5rem) * 2);
 }
 
+.videojs-test-skin-with-notes .media-title {
+  inset-inline-end: 320px;
+}
+
 .videojs-test-player-actions {
   position: absolute;
   z-index: 40;
@@ -89,6 +93,14 @@ body {
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
+}
+
+.videojs-test-skin .media-title {
+  padding-inline-end: 144px;
+}
+
+.videojs-test-skin .media-time-slider .media-slider-fill::before {
+  background: linear-gradient(90deg, #60a5fa, #2563eb);
 }
 
 .videojs-test-skin-paused-controls-hidden .video-controls-content,
@@ -166,6 +178,10 @@ body {
 
   .videojs-test-skin-with-notes .video-controls-content {
     inset-inline-end: var(--media-spacing, 0.5rem);
+  }
+
+  .videojs-test-skin-with-notes .media-title {
+    inset-inline-end: 0;
   }
 
 }

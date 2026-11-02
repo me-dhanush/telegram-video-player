@@ -49,6 +49,7 @@ export default function NotesPanel({
   currentTime,
   messageId,
   telegramChatId,
+  local = false,
   onClose,
 }) {
   const [notes, setNotes] = useState([]);
@@ -62,6 +63,28 @@ export default function NotesPanel({
   const editTextRef = useRef(null);
   const noteTextRef = useRef(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [availableVideos, setAvailableVideos] = useState([]);
+  const [targetVideo, setTargetVideo] = useState("");
+  const [targetGroup, setTargetGroup] = useState("");
+  const [targetTopic, setTargetTopic] = useState("");
+  const [transferMessage, setTransferMessage] = useState("");
+
+  const localStorageKey = typeof window !== "undefined"
+    ? `local-video-notes:${sessionStorage.getItem("local-video-name") || "video"}`
+    : "local-video-notes:video";
+  const targetGroups = [...new Map(availableVideos
+    .filter((video) => /^(go classes|pw classes)$/i.test(video.chatName || ""))
+    .map((video) => [video.telegramChatId, { id: video.telegramChatId, name: video.chatName }])).values()];
+  const targetTopics = [...new Map(availableVideos
+    .filter((video) => video.telegramChatId === targetGroup)
+    .map((video) => [video.topicId ?? "main", { id: video.topicId ?? "main", name: video.topicName || "Main chat" }])).values()];
+  const targetTopicVideos = availableVideos.filter((video) => video.telegramChatId === targetGroup && (video.topicId ?? "main") === targetTopic);
+
+  useEffect(() => {
+    if (!local) return;
+    try { setNotes(JSON.parse(window.localStorage.getItem(localStorageKey) || "[]")); }
+    catch { setNotes([]); }
+  }, [local, localStorageKey]);
 
   useEffect(() => {
     if (editorOpen) {
@@ -96,10 +119,15 @@ export default function NotesPanel({
       }
     }
 
-    if (!messageId || !telegramChatId) return;
+    if (local || !messageId || !telegramChatId) return;
 
     loadNotes();
-  }, [messageId, telegramChatId]);
+  }, [messageId, telegramChatId, local]);
+
+  useEffect(() => {
+    if (!local) return;
+    fetch("/api/videos").then((response) => response.json()).then(setAvailableVideos).catch(() => {});
+  }, [local]);
 
   useEffect(() => {
     function handleKeyboardShortcuts(event) {
@@ -162,6 +190,23 @@ export default function NotesPanel({
     videoRef.current.play().catch(() => {});
   }
 
+  async function appendLocalNotes() {
+    const [targetChatId, targetMessageId] = targetVideo.split(":");
+    if (!targetVideo || notes.length === 0) return;
+    setTransferMessage("Sending notes…");
+    try {
+      for (const note of notes) {
+        const response = await fetch("/api/notes", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegramChatId: targetChatId, messageId: targetMessageId, time: note.time, text: note.text }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || "Could not append notes");
+      }
+      setTransferMessage(`Added ${notes.length} notes to the Telegram video.`);
+    } catch (error) { setTransferMessage(error.message); }
+  }
+
   function addNoteAtCurrentTime() {
     const currentVideoTime = Math.floor(videoRef.current?.currentTime || 0);
 
@@ -186,6 +231,14 @@ export default function NotesPanel({
     }
 
     try {
+      if (local) {
+        const note = { id: crypto.randomUUID(), time: parsedTimestamp, text, createdAt: new Date().toISOString() };
+        const updated = [...notes, note].sort((a, b) => a.time - b.time);
+        window.localStorage.setItem(localStorageKey, JSON.stringify(updated));
+        setNotes(updated);
+        setEditorOpen(false); setTimestamp(""); setNoteText("");
+        return;
+      }
       const response = await fetch("/api/notes", {
         method: "POST",
         headers: {
@@ -416,6 +469,11 @@ export default function NotesPanel({
     <aside
       id="side-panel"
       className="w-[320px] shrink-0 h-full bg-[#0e1621] border-l border-white/[0.06] flex flex-col"
+      onPointerDown={(event) => event.stopPropagation()}
+      onPointerMove={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
     >
       {/* HEADER */}
       <div className="shrink-0 px-4 py-4 bg-[#17212b] border-b border-white/[0.07]">
@@ -681,6 +739,23 @@ export default function NotesPanel({
 
       {/* BOTTOM BAR */}
       <div className="shrink-0 px-3 py-2.5 bg-[#17212b] border-t border-white/[0.07]">
+        {local && <div className="mb-3 space-y-2">
+          <label className="block text-xs text-[#b8c5d0]">Choose where to add these notes</label>
+          <select aria-label="Choose group" value={targetGroup} onChange={(event) => { setTargetGroup(event.target.value); setTargetTopic(""); setTargetVideo(""); }} className="w-full rounded bg-[#0e1621] p-2 text-sm text-white">
+            <option value="">1. Choose a group</option>
+            {targetGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+          <select aria-label="Choose topic" value={targetTopic} disabled={!targetGroup} onChange={(event) => { setTargetTopic(event.target.value); setTargetVideo(""); }} className="w-full rounded bg-[#0e1621] p-2 text-sm text-white disabled:opacity-50">
+            <option value="">2. Choose a topic</option>
+            {targetTopics.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+          </select>
+          <select aria-label="Choose video" value={targetVideo} disabled={!targetTopic} onChange={(event) => setTargetVideo(event.target.value)} className="w-full rounded bg-[#0e1621] p-2 text-sm text-white disabled:opacity-50">
+            <option value="">3. Choose a video</option>
+            {targetTopicVideos.map((video) => <option key={`${video.telegramChatId}:${video.id}`} value={`${video.telegramChatId}:${video.id}`}>{video.name}</option>)}
+          </select>
+          <button type="button" onClick={appendLocalNotes} disabled={!targetVideo || notes.length === 0} className="w-full rounded bg-[#229ed9] px-3 py-2 text-sm text-white disabled:opacity-50">Append local notes</button>
+          {transferMessage && <p role="status" className="text-xs text-[#b8c5d0]">{transferMessage}</p>}
+        </div>}
         <div className="flex items-center gap-2">
           {/* Timestamp */}
           <button

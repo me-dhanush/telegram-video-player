@@ -10,7 +10,7 @@ import { NeutralVideoSkin, Video, VideoPlayer } from "@videojs/react/video";
 import { useEffect, useMemo, useRef, useState } from "react";
 import NotesPanel from "./NotesPanel";
 
-function VideoJsPlayerContent({ source, messageId, telegramChatId }) {
+function VideoJsPlayerContent({ source, messageId, telegramChatId, local = false }) {
   const media = useMedia();
   const currentTime = usePlayer((state) => state.currentTime);
   const controlsVisible = usePlayer((state) => state.controlsVisible);
@@ -162,6 +162,7 @@ function VideoJsPlayerContent({ source, messageId, telegramChatId }) {
             currentTime={currentTime ?? 0}
             messageId={messageId}
             telegramChatId={telegramChatId}
+            local={local}
             onClose={() => setNotesVisible(false)}
           />
         )}
@@ -185,53 +186,34 @@ export default function VideoJsTestPlayer({
 }) {
   const [urlParams, setUrlParams] = useState(null);
   const [videoTitle, setVideoTitle] = useState(titleProp || "Loading video...");
-  const [error, setError] = useState("");
+  const [localSource, setLocalSource] = useState("");
+  const [localTitle, setLocalTitle] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setUrlParams(params);
+    if (params.get("local") === "1") {
+      const savedSource = sessionStorage.getItem("local-video-source") || "";
+      const savedTitle = sessionStorage.getItem("local-video-name") || "Local video";
+      console.info("[local-video] Player route loaded:", { hasSource: Boolean(savedSource), title: savedTitle, source: savedSource });
+      if (!savedSource) console.error("[local-video] No local video source found in session storage.");
+      setLocalSource(savedSource);
+      setLocalTitle(savedTitle);
+    }
     if (window.Telegram?.WebApp) window.Telegram.WebApp.expand();
   }, []);
 
   const messageId = messageIdProp ?? (urlParams?.get("messageId") || "19");
   const telegramChatId =
     telegramChatIdProp ?? urlParams?.get("telegramChatId") ?? "";
+  const local = urlParams?.get("local") === "1";
+  const urlTitle = urlParams?.get("title") || "";
 
   useEffect(() => {
-    if (titleProp) {
-      setVideoTitle(titleProp);
-      return;
-    }
+    setVideoTitle(titleProp || urlTitle || `Video ${messageId}`);
+  }, [messageId, titleProp, urlTitle]);
 
-    if (!messageId) return;
-    let cancelled = false;
-
-    fetch("/api/videos")
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not load the video list.");
-        return response.json();
-      })
-      .then((videos) => {
-        const selectedVideo = videos.find(
-          (video) =>
-            String(video.id) === String(messageId) &&
-            (!telegramChatId || video.telegramChatId === telegramChatId),
-        );
-
-        if (!cancelled && selectedVideo) {
-          setVideoTitle(selectedVideo.name);
-        }
-      })
-      .catch((loadError) => {
-        if (!cancelled) setError(loadError.message);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [messageId, telegramChatId, titleProp]);
-
-  const source = useMemo(() => {
+  const telegramSource = useMemo(() => {
     if (!telegramChatId || !messageId) return "";
     const params = new URLSearchParams({
       messageId: String(messageId),
@@ -239,6 +221,21 @@ export default function VideoJsTestPlayer({
     });
     return `/api/video?${params.toString()}`;
   }, [messageId, telegramChatId]);
+  const source = local ? localSource : telegramSource;
+
+  useEffect(() => {
+    if (!local || !localSource) return;
+    const video = document.querySelector(".videojs-test-video-column video");
+    if (!video) {
+      console.error("[local-video] Player video element was not mounted.");
+      return;
+    }
+    const handleError = () => console.error("[local-video] Browser media error:", { code: video.error?.code, message: video.error?.message, source: localSource });
+    const handleLoaded = () => console.info("[local-video] Video metadata loaded:", { duration: video.duration, videoWidth: video.videoWidth, videoHeight: video.videoHeight });
+    video.addEventListener("error", handleError);
+    video.addEventListener("loadedmetadata", handleLoaded);
+    return () => { video.removeEventListener("error", handleError); video.removeEventListener("loadedmetadata", handleLoaded); };
+  }, [local, localSource]);
 
   return (
     <main className={`videojs-test-page ${className}`.trim()}>
@@ -248,16 +245,16 @@ export default function VideoJsTestPlayer({
           prop or add it to the URL.
         </p>
       ) : (
-        <VideoPlayer title={videoTitle}>
+        <VideoPlayer title={local ? localTitle : videoTitle}>
           <VideoJsPlayerContent
             source={source}
             messageId={messageId}
             telegramChatId={telegramChatId}
+            local={local}
           />
         </VideoPlayer>
       )}
 
-      {error && <p className="videojs-test-error" role="alert">{error}</p>}
     </main>
   );
 }

@@ -44,15 +44,14 @@ export async function POST(request) {
       },
     });
 
-    console.log("✅ Note saved!");
-    console.log("Note ID:", note.id);
+    console.info("[Notes] Note created", { noteId: note.id });
 
     return NextResponse.json({
       success: true,
       note,
     });
   } catch (error) {
-    console.error("❌ Note creation failed:", error);
+    console.error("[Notes] Could not create note", error);
 
     return NextResponse.json(
       {
@@ -112,7 +111,7 @@ export async function GET(request) {
       notes: video.notes,
     });
   } catch (error) {
-    console.error("❌ Notes fetch failed:", error);
+    console.error("[Notes] Could not fetch notes", error);
 
     return NextResponse.json(
       {
@@ -145,13 +144,13 @@ export async function DELETE(request) {
       },
     });
 
-    console.log("✅ Note deleted:", id);
+    console.info("[Notes] Note deleted", { noteId: id });
 
     return NextResponse.json({
       success: true,
     });
   } catch (error) {
-    console.error("❌ Note deletion failed:", error);
+    console.error("[Notes] Could not delete note", error);
 
     return NextResponse.json(
       {
@@ -201,14 +200,14 @@ export async function PUT(request) {
       },
     });
 
-    console.log("✅ Note updated:", note.id);
+    console.info("[Notes] Note updated", { noteId: note.id });
 
     return NextResponse.json({
       success: true,
       note,
     });
   } catch (error) {
-    console.error("❌ Note update failed:", error);
+    console.error("[Notes] Could not update note", error);
 
     return NextResponse.json(
       {

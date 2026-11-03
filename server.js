@@ -46,21 +46,34 @@ async function main() {
       })(request, response);
     });
 
-    app.get("/api/videos", async (_request, response, next) => {
+    app.get("/api/videos", async (request, response, next) => {
       try {
-        const catalog = await getTelegram();
-        response.json(
-          catalog.videos.map(
-            ({ id, telegramChatId, chatName, name, topicId, topicName }) => ({
-              id,
-              telegramChatId,
-              chatName,
-              name,
-              topicId,
-              topicName,
-            }),
-          ),
+        const { mode, topicId } = request.query;
+        const {
+          loadTopicCatalog,
+          getVideosForTopic,
+          getRecentVideos,
+        } = require("./src/telegram/telegramClient");
+        const selectFields = (videos) => videos.map(
+          ({ id, telegramChatId, chatName, name, topicId, topicName }) => ({
+            id, telegramChatId, chatName, name, topicId, topicName,
+          }),
         );
+        const telegram = await getTelegram({ loadVideos: false });
+
+        if (mode === "overview") {
+          const [topics, recentVideos] = await Promise.all([
+            loadTopicCatalog(telegram),
+            getRecentVideos(telegram),
+          ]);
+          return response.json({ topics, recentVideos: selectFields(recentVideos) });
+        }
+        if (mode === "topics") return response.json(await loadTopicCatalog(telegram));
+        if (mode === "recent") return response.json(selectFields(await getRecentVideos(telegram)));
+        if (topicId) return response.json(selectFields(await getVideosForTopic(telegram, topicId)));
+
+        const catalog = await getTelegram();
+        return response.json(selectFields(catalog.videos));
       } catch (error) {
         next(error);
       }
@@ -68,7 +81,7 @@ async function main() {
 
     app.use((request, response) => handle(request, response));
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Next.js lecture player running on port ${PORT}`);
+      console.info(`[Server] Ready at http://localhost:${PORT}`);
     });
   } catch (error) {
     await releaseDistributedLock().catch(() => {});

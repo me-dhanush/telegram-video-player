@@ -17,6 +17,10 @@ export default function VideosPage() {
   }
 
   const [videos, setVideos] = useState([]);
+  const [topics, setTopics] = useState([]);
+  const [recentVideos, setRecentVideos] = useState([]);
+  const [videosLoading, setVideosLoading] = useState(false);
+  const [viewMode, setViewMode] = useState("grid");
   const [searchText, setSearchText] = useState("");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
   const [localVideos, setLocalVideos] = useState([]);
@@ -46,36 +50,50 @@ export default function VideosPage() {
   }
 
   useEffect(() => {
-    fetch("/api/videos")
-      .then((response) => response.json())
-      .then((data) => {
-        setVideos(data);
-        if (data.length > 0) {
-          setSelectedTopicId(data[0].topicId);
-        }
-      });
+    let active = true;
+    fetch("/api/videos?mode=overview").then((response) => response.json()).then((overview) => {
+      if (!active) return;
+      const validTopics = Array.isArray(overview?.topics) ? overview.topics : [];
+      setTopics(validTopics);
+      setRecentVideos(Array.isArray(overview?.recentVideos) ? overview.recentVideos : []);
+      const remembered = window.localStorage.getItem("last-opened-topic");
+      setSelectedTopicId(
+        validTopics.some((topic) => topic.id === remembered)
+          ? remembered
+          : validTopics[0]?.id ?? null,
+      );
+    }).catch((error) => console.error("Could not load video overview", error));
+    return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!selectedTopicId) return;
+    window.localStorage.setItem("last-opened-topic", selectedTopicId);
+    let active = true;
+    setVideosLoading(true);
+    fetch(`/api/videos?topicId=${encodeURIComponent(selectedTopicId)}`)
+      .then((response) => response.json())
+      .then((data) => { if (active) setVideos(Array.isArray(data) ? data : []); })
+      .catch((error) => { if (active) { console.error("Could not load selected topic", error); setVideos([]); } })
+      .finally(() => { if (active) setVideosLoading(false); });
+    return () => { active = false; };
+  }, [selectedTopicId]);
 
   const filteredVideos = videos.filter((video) =>
     video.name.toLowerCase().includes(searchText.toLowerCase()),
   );
 
-  const groupedVideos = filteredVideos.reduce((groups, video) => {
-    const topicId = video.topicId ?? "other";
-
-    if (!groups[topicId]) {
-      groups[topicId] = [];
-    }
-
-    groups[topicId].push(video);
-    return groups;
-  }, {});
-
-  const topicGroups = Object.entries(groupedVideos);
+  const groupedVideos = Object.fromEntries(topics.map((topic) => [topic.id, []]));
+  for (const video of filteredVideos) {
+    if (groupedVideos[video.topicId]) groupedVideos[video.topicId].push(video);
+  }
+  const topicGroups = topics
+    .filter((topic) => topic.topicName.toLowerCase().includes(searchText.toLowerCase()) || topic.chatName.toLowerCase().includes(searchText.toLowerCase()))
+    .map((topic) => [topic.id, [topic]]);
 
   const chatGroups = topicGroups.reduce((groups, topicGroup) => {
     const [topicId, topicVideos] = topicGroup;
-    const chatId = topicVideos[0]?.telegramChatId || "unknown";
+    const chatId = topicVideos[0]?.chatId || "unknown";
     if (!groups[chatId]) {
       groups[chatId] = {
         name: topicVideos[0]?.chatName || "Telegram chat",
@@ -89,7 +107,7 @@ export default function VideosPage() {
   const selectedTopicVideos = groupedVideos[selectedTopicId] || [];
 
   const selectedTopicName =
-    selectedTopicVideos[0]?.topicName || "Select a topic";
+    topics.find((topic) => topic.id === selectedTopicId)?.topicName || "Select a topic";
 
   return (
     <main className="h-screen bg-gray-100">
@@ -125,23 +143,14 @@ export default function VideosPage() {
               </SearchField>
             </div>
 
-            {/* Categories */}
-
-            <div className="border-t px-4 pt-5 shrink-0">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs text-gray-400 uppercase">
-                  Subjects
-                </span>
-              </div>
-
-              {/* Subjects */}
-
+            {/* Class sections */}
+            <div className="border-t px-4 pt-3 shrink-0">
               <div className="space-y-1">
                 {Object.entries(chatGroups).map(([chatId, chat]) => (
-                  <div key={chatId} className="mb-4">
-                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <section key={chatId} aria-label={chat.name} className="mb-4 border-b border-slate-200 pb-3 last:border-0">
+                    <h3 className="px-3 py-2 text-sm font-semibold text-slate-700">
                       {chat.name}
-                    </div>
+                    </h3>
                     {chat.topics.map(([topicId, topicVideos]) => {
                   const topicName =
                     topicVideos[0]?.topicName || `Topic ${topicId}`;
@@ -184,7 +193,7 @@ export default function VideosPage() {
                     </button>
                   );
                     })}
-                  </div>
+                  </section>
                 ))}
               </div>
             </div>
@@ -199,7 +208,7 @@ export default function VideosPage() {
               </div>
 
               <div className="space-y-2">
-                {videos.slice(0, 10).map((video) => (
+                {recentVideos.map((video) => (
                   <button
                     key={`${video.telegramChatId}:${video.id}`}
                     onClick={() => openVideo(video)}
@@ -278,20 +287,14 @@ export default function VideosPage() {
                         </SearchField>
                       </div>
 
-                      {/* Subjects */}
-                      <div className="border-t pt-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-xs text-gray-400 uppercase">
-                            Subjects
-                          </span>
-                        </div>
-
+                      {/* Class sections */}
+                      <div className="border-t pt-3">
                         <div className="space-y-1">
                           {Object.entries(chatGroups).map(([chatId, chat]) => (
-                            <div key={chatId} className="mb-4">
-                              <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            <section key={chatId} aria-label={chat.name} className="mb-4 border-b border-slate-200 pb-3 last:border-0">
+                              <h3 className="px-3 py-2 text-sm font-semibold text-slate-700">
                                 {chat.name}
-                              </div>
+                              </h3>
                               {chat.topics.map(([topicId, topicVideos]) => {
                             const topicName =
                               topicVideos[0]?.topicName || `Topic ${topicId}`;
@@ -329,7 +332,7 @@ export default function VideosPage() {
                               </button>
                             );
                               })}
-                            </div>
+                            </section>
                           ))}
                         </div>
                       </div>
@@ -343,7 +346,7 @@ export default function VideosPage() {
                         </div>
 
                         <div className="space-y-2">
-                          {videos.slice(0, 10).map((video) => (
+                          {recentVideos.map((video) => (
                             <button
                               key={`${video.telegramChatId}:${video.id}`}
                               onClick={() => openVideo(video)}
@@ -373,24 +376,48 @@ export default function VideosPage() {
                 </Drawer.Content>
               </Drawer.Backdrop>
             </Drawer>
-
-            <h2 className="font-semibold truncate">{selectedTopicName}</h2>
           </div>
 
           {/* Videos */}
           <section className="flex-1 min-h-0 min-w-0 overflow-y-auto">
             {/* Selected topic */}
-            <div className="hidden md:block border-b px-6 py-4 font-semibold">
-              {selectedTopicName}
+            <div className="border-b px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-3">
+              <h2 className="font-semibold truncate">{selectedTopicName}</h2>
+              <div className="flex shrink-0 rounded-lg border bg-slate-50 p-1" aria-label="Video layout">
+                <button type="button" aria-label="List view" title="List view" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={`cursor-pointer rounded-md p-2 ${viewMode === "list" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="size-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12m-12 5.25h12m-12 5.25h12M3.75 6.75h.008v.008H3.75V6.75Zm0 5.25h.008v.008H3.75V12Zm0 5.25h.008v.008H3.75v-.008Z" />
+                  </svg>
+                </button>
+                <button type="button" aria-label="Grid view" title="Grid view" aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")} className={`cursor-pointer rounded-md p-2 ${viewMode === "grid" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="size-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h7.5v7.5h-7.5v-7.5Zm9 0h7.5v7.5h-7.5v-7.5Zm-9 9h7.5v7.5h-7.5v-7.5Zm9 0h7.5v7.5h-7.5v-7.5Z" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Video list */}
-            <div>
-              {[...selectedTopicVideos]
-                .sort(
-                  (firstVideo, secondVideo) => firstVideo.id - secondVideo.id,
-                )
-                .map((video, index) => (
+            <div className={viewMode === "grid" ? "grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" : ""}>
+              {[...selectedTopicVideos].sort((firstVideo, secondVideo) => firstVideo.id - secondVideo.id).map((video, index) => (
+                viewMode === "grid" ? (
+                  <button key={`${video.telegramChatId}:${video.id}`} onClick={() => openVideo(video)} className="cursor-pointer overflow-hidden rounded-xl border bg-white text-left shadow-sm transition hover:shadow-md">
+                    <div className="relative aspect-video bg-slate-200 flex items-center justify-center text-3xl text-slate-400">
+                      <span aria-hidden="true">▶</span>
+                      <img
+                        src={`/api/thumbnail?messageId=${encodeURIComponent(video.id)}&telegramChatId=${encodeURIComponent(video.telegramChatId)}`}
+                        alt=""
+                        loading="lazy"
+                        className="absolute inset-0 h-full w-full object-cover"
+                        onError={(event) => { event.currentTarget.style.display = "none"; }}
+                      />
+                    </div>
+                    <div className="p-3">
+                      <div className="line-clamp-2 text-sm font-medium text-slate-800">{video.name}</div>
+                      <div className="mt-2 text-xs text-slate-500">Lecture {index + 1}</div>
+                    </div>
+                  </button>
+                ) : (
                   <button
                     key={`${video.telegramChatId}:${video.id}`}
                     onClick={() => openVideo(video)}
@@ -415,9 +442,14 @@ export default function VideosPage() {
                       ▶
                     </div>
                   </button>
-                ))}
+                )
+              ))}
 
-              {selectedTopicVideos.length === 0 && (
+              {videosLoading && (
+                <div className="p-12 text-center text-gray-500">Loading lectures…</div>
+              )}
+
+              {!videosLoading && selectedTopicVideos.length === 0 && (
                 <div className="p-12 text-center text-gray-500">
                   No lectures found
                 </div>

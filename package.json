@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "node scripts/patch-videojs-gesture-window.js",
     "dev": "cross-env NODE_ENV=development TELEGRAM_LOCAL_SERVICE=true node server.js",
-    "build": "prisma generate && next build --webpack",
+    "build": "prisma generate && next build --turbopack",
     "start": "cross-env NODE_ENV=production TELEGRAM_LOCAL_SERVICE=true node server.js",
     "rename-videos": "node src/telegram/videoRenamer.js"
   },

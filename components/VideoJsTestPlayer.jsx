@@ -21,6 +21,7 @@ function VideoJsPlayerContent({ source, messageId, telegramChatId, local = false
   const hidePausedControlsTimerRef = useRef(null);
   const [notesVisible, setNotesVisible] = useState(false);
   const [pausedControlsHidden, setPausedControlsHidden] = useState(false);
+  const layoutRef = useRef(null);
 
   pausedRef.current = paused;
 
@@ -30,6 +31,59 @@ function VideoJsPlayerContent({ source, messageId, telegramChatId, local = false
       mediaRef.current = null;
     };
   }, [media]);
+
+  useEffect(() => {
+    const video = mediaRef.current;
+    if (!video || typeof video.addEventListener !== "function") return;
+
+    let localName = "local-video";
+    if (local) {
+      try {
+        localName = window.sessionStorage.getItem("local-video-name") || localName;
+      } catch {}
+    }
+    const storageKey = local
+      ? `videojs-resume:local:${localName}`
+      : `videojs-resume:${telegramChatId || "default"}:${messageId}`;
+    let restored = false;
+
+    const restorePosition = () => {
+      if (restored || !Number.isFinite(video.duration)) return;
+      restored = true;
+
+      try {
+        const savedPosition = Number(window.localStorage.getItem(storageKey));
+        if (Number.isFinite(savedPosition) && savedPosition > 0 && savedPosition < video.duration) {
+          video.currentTime = savedPosition;
+        }
+      } catch (error) {
+        console.warn("Could not restore playback position:", error);
+      }
+    };
+
+    const savePosition = () => {
+      if (!Number.isFinite(video.currentTime) || video.currentTime <= 0) return;
+      try {
+        window.localStorage.setItem(storageKey, String(video.currentTime));
+      } catch (error) {
+        console.warn("Could not save playback position:", error);
+      }
+    };
+
+    video.addEventListener("loadedmetadata", restorePosition);
+    video.addEventListener("timeupdate", savePosition);
+    video.addEventListener("pause", savePosition);
+    window.addEventListener("pagehide", savePosition);
+    if (video.readyState >= 1) restorePosition();
+
+    return () => {
+      savePosition();
+      video.removeEventListener("loadedmetadata", restorePosition);
+      video.removeEventListener("timeupdate", savePosition);
+      video.removeEventListener("pause", savePosition);
+      window.removeEventListener("pagehide", savePosition);
+    };
+  }, [media, source, messageId, telegramChatId, local]);
 
   useEffect(() => {
     const revealAndScheduleHide = () => {
@@ -60,55 +114,96 @@ function VideoJsPlayerContent({ source, messageId, telegramChatId, local = false
   }, [paused]);
 
   useEffect(() => {
+    const layout = layoutRef.current;
+    if (!layout) return;
+
+    const syncFullscreenButton = () => {
+      const button = layout.querySelector(".media-fullscreen-button");
+      const isFullscreen = document.fullscreenElement === layout;
+      button?.toggleAttribute("data-fullscreen", isFullscreen);
+      button?.setAttribute("aria-label", isFullscreen ? "Exit fullscreen" : "Enter fullscreen");
+      button?.setAttribute("title", isFullscreen ? "Exit fullscreen" : "Fullscreen");
+      if (isFullscreen && document.activeElement === button) {
+        button.blur();
+        layout.focus({ preventScroll: true });
+      }
+    };
+
+    const handleFullscreenClick = (event) => {
+      if (!event.target.closest?.(".media-fullscreen-button")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (document.fullscreenElement) document.exitFullscreen?.();
+      else layout.requestFullscreen?.();
+    };
+
+    layout.addEventListener("click", handleFullscreenClick, true);
+    document.addEventListener("fullscreenchange", syncFullscreenButton);
+    syncFullscreenButton();
+    return () => {
+      layout.removeEventListener("click", handleFullscreenClick, true);
+      document.removeEventListener("fullscreenchange", syncFullscreenButton);
+    };
+  }, []);
+
+  useEffect(() => {
     function handleKeyboard(event) {
       const target = event.target;
       const isEditingText = target instanceof HTMLElement &&
         (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
       if (isEditingText) return;
 
+      if (event.code === "Space" && document.fullscreenElement === layoutRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const video = mediaRef.current;
+        if (video?.paused || video?.ended) video?.play?.().catch(() => {});
+        else video?.pause?.();
+        return;
+      }
+
       const key = event.key.toLowerCase();
       const video = mediaRef.current;
       if ((event.code === "Space" || key === "5") && isMediaPauseCapable(video)) {
         event.preventDefault();
-        event.stopPropagation();
+        event.stopImmediatePropagation();
         if (video.paused || video.ended) video.play().catch(() => {});
         else video.pause();
       } else if ((key === "arrowleft" || key === "4") && isMediaSeekCapable(video)) {
         event.preventDefault();
-        event.stopPropagation();
+        event.stopImmediatePropagation();
         video.currentTime = Math.max(0, video.currentTime - 10);
       } else if ((key === "arrowright" || key === "6") && isMediaSeekCapable(video)) {
         event.preventDefault();
-        event.stopPropagation();
+        event.stopImmediatePropagation();
         video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10);
       } else if (key === "f") {
         event.preventDefault();
-        event.stopPropagation();
+        event.stopImmediatePropagation();
         if (!document.fullscreenElement) {
-          shellRef.current
-            ?.closest(".videojs-test-skin")
-            ?.requestFullscreen?.();
+          layoutRef.current?.requestFullscreen?.();
         } else {
           document.exitFullscreen?.();
         }
       } else if (key === "z") {
         event.preventDefault();
-        event.stopPropagation();
+        event.stopImmediatePropagation();
         setNotesVisible((visible) => !visible);
       }
     }
 
-    document.addEventListener("keydown", handleKeyboard, true);
-    return () => document.removeEventListener("keydown", handleKeyboard, true);
+    window.addEventListener("keydown", handleKeyboard, true);
+    return () => window.removeEventListener("keydown", handleKeyboard, true);
   }, []);
 
   return (
-    <NeutralVideoSkin
-      className={`videojs-test-skin ${notesVisible ? "videojs-test-skin-with-notes" : ""} ${pausedControlsHidden ? "videojs-test-skin-paused-controls-hidden" : ""}`}
-    >
+    <div className="videojs-test-layout" ref={layoutRef} tabIndex={-1}>
+      <NeutralVideoSkin
+        className={`videojs-test-skin ${pausedControlsHidden ? "videojs-test-skin-paused-controls-hidden" : ""}`}
+      >
       <div className="videojs-test-content" ref={shellRef}>
         <div className="videojs-test-video-column">
-          <Video key={source} src={source} playsInline preload="metadata" />
+          <Video key={source} src={source} playsInline preload="auto" />
           <div
             className={`videojs-test-player-actions ${controlsVisible ? "is-visible" : ""}`}
           >
@@ -156,18 +251,19 @@ function VideoJsPlayerContent({ source, messageId, telegramChatId, local = false
             </button>
           </div>
         </div>
-        {notesVisible && (
-          <NotesPanel
-            videoRef={mediaRef}
-            currentTime={currentTime ?? 0}
-            messageId={messageId}
-            telegramChatId={telegramChatId}
-            local={local}
-            onClose={() => setNotesVisible(false)}
-          />
-        )}
       </div>
-    </NeutralVideoSkin>
+      </NeutralVideoSkin>
+      {notesVisible && (
+        <NotesPanel
+          videoRef={mediaRef}
+          currentTime={currentTime ?? 0}
+          messageId={messageId}
+          telegramChatId={telegramChatId}
+          local={local}
+          onClose={() => setNotesVisible(false)}
+        />
+      )}
+    </div>
   );
 }
 

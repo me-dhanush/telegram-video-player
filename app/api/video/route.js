@@ -133,11 +133,6 @@ async function downloadBlock(
       throw new Error("Invalid Telegram block size");
     }
 
-    console.log("📥 Telegram download");
-    console.log("Message ID:", messageId);
-    console.log("Block:", blockStart);
-    console.log("Limit:", alignedLimit);
-
     let result;
 
     try {
@@ -165,8 +160,10 @@ async function downloadBlock(
         error?.message?.includes("FILE_REFERENCE_EXPIRED") ||
         error?.constructor?.name === "FileReferenceExpiredError"
       ) {
-        console.log("⚠️ Telegram file reference expired.");
-        console.log("🔄 Refreshing message:", messageId);
+        console.warn(
+          "[Video] Telegram file reference expired; refreshing it",
+          { messageId },
+        );
 
         const messages = await telegram.client.getMessages(
           video.telegramEntity,
@@ -192,7 +189,7 @@ async function downloadBlock(
         video.videoDocument = freshMessage.media.document;
         video.videoLocation = freshVideoLocation;
 
-        console.log("✅ File reference refreshed.");
+        console.info("[Video] Refreshed Telegram file reference", { messageId });
 
         // --------------------------------------------------
         // RETRY DOWNLOAD WITH FRESH REFERENCE
@@ -217,12 +214,13 @@ async function downloadBlock(
       else if (
         error?.message?.includes("Cannot send requests while disconnected")
       ) {
-        console.log("⚠️ Telegram disconnected during download.");
-        console.log("🔄 Reconnecting...");
+        console.warn("[Video] Telegram disconnected; reconnecting", {
+          messageId,
+        });
 
         await ensureTelegramConnected(telegram.client);
 
-        console.log("✅ Reconnected.");
+        console.info("[Video] Telegram reconnected", { messageId });
 
         result = await invokeGetFile(
           telegram,
@@ -259,27 +257,9 @@ export async function GET(request) {
   const requestStartedAt = Date.now();
   const requestUrl = new URL(request.url);
   const requestMessageId = requestUrl.searchParams.get("messageId");
-  const range = request.headers.get("range");
-
-  console.info(
-    JSON.stringify({
-      event: "video_request_start",
-      requestId,
-      messageId: requestMessageId,
-      range: range || "full",
-    }),
-  );
 
   try {
     const handleVideoRequest = async (telegram) => {
-    console.info(
-      JSON.stringify({
-        event: "video_telegram_session_ready",
-        requestId,
-        messageId: requestMessageId,
-        elapsedMs: Date.now() - requestStartedAt,
-      }),
-    );
     const url = new URL(request.url);
 
     const messageId = Number(url.searchParams.get("messageId"));
@@ -291,21 +271,11 @@ export async function GET(request) {
       });
     }
 
-    const messageLookupStartedAt = Date.now();
     const video = await getTelegramVideo(
       telegram,
       messageId,
       telegramChatId,
     );
-    console.info(
-      JSON.stringify({
-        event: "video_message_ready",
-        requestId,
-        messageId,
-        elapsedMs: Date.now() - messageLookupStartedAt,
-      }),
-    );
-
     if (!video) {
       return new Response("Video not found", {
         status: 404,
@@ -368,13 +338,6 @@ export async function GET(request) {
 
     const blockSize = blockEnd - blockStart;
 
-    console.log("");
-
-    console.log("🌐 Browser requested video");
-    console.log("Message ID:", messageId);
-    console.log("Browser start:", browserStart);
-    console.log("Telegram block:", `${blockStart} → ${blockEnd - 1}`);
-
     // Keep background prefetch in local single-process mode only. A Vercel
     // request must finish all Telegram work before releasing its shared lock.
     const nextBlockStart = blockEnd;
@@ -405,19 +368,6 @@ export async function GET(request) {
       blockStart,
       blockSize,
     );
-
-    console.info(
-      JSON.stringify({
-        event: "video_telegram_block_received",
-        requestId,
-        messageId,
-        blockStart,
-        bytes: telegramData.length,
-        elapsedMs: Date.now() - requestStartedAt,
-      }),
-    );
-
-    console.log("✅ Received:", telegramData.length, "bytes");
 
     // --------------------------------------------------
     // RETURN ONLY WHAT BROWSER REQUESTED
@@ -453,7 +403,7 @@ export async function GET(request) {
 
         "Accept-Ranges": "bytes",
 
-        "Cache-Control": "no-cache",
+        "Cache-Control": "private, max-age=3600",
         "X-Video-Request-Id": requestId,
       },
     });
@@ -463,13 +413,6 @@ export async function GET(request) {
       return await handleVideoRequest(await getTelegram({ loadVideos: false }));
     }
 
-    console.info(
-      JSON.stringify({
-        event: "video_session_lock_wait",
-        requestId,
-        messageId: requestMessageId,
-      }),
-    );
     return await withTelegramSession(handleVideoRequest, {
       loadVideos: false,
     });

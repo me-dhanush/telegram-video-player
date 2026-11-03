@@ -163,20 +163,22 @@ export default function LecturePlayer() {
 
     if (!isMobile) return;
 
+    if (!document.fullscreenElement) {
+      try {
+        await shellRef.current?.requestFullscreen?.();
+      } catch (error) {
+        console.log("Mobile fullscreen is unavailable:", error);
+      }
+    }
+
     try {
-      if (!document.fullscreenElement) {
-        await shellRef.current?.requestFullscreen();
-      }
-
-      if (screen.orientation?.lock) {
-        await screen.orientation.lock("landscape");
-      }
-
-      if (video.paused) {
-        await video.play();
-      }
+      await screen.orientation?.lock?.("landscape");
     } catch (error) {
-      console.log("Mobile fullscreen/orientation failed:", error);
+      console.log("Mobile landscape lock is unavailable:", error);
+    }
+
+    if (video.paused) {
+      video.play().catch((error) => console.error("Play failed:", error));
     }
   }
 
@@ -200,7 +202,6 @@ export default function LecturePlayer() {
     const searchParams = new URLSearchParams(window.location.search);
     const selectedMessageId = Number(searchParams.get("messageId")) || 19;
     const selectedChatId = searchParams.get("telegramChatId");
-
     setMessageId(selectedMessageId);
 
     video.preload = "metadata";
@@ -280,6 +281,7 @@ export default function LecturePlayer() {
       if (event.target !== video) return;
 
       setControlsVisible((visible) => !visible);
+      handleMobileTap();
     };
 
     video.addEventListener("play", handlePlay);

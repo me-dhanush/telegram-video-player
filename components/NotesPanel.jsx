@@ -115,7 +115,7 @@ export default function NotesPanel({
 
         setNotes(data.notes);
       } catch (error) {
-        console.error("Could not load notes:", error);
+        console.error("[Notes] Could not load notes", error);
       }
     }
 
@@ -266,9 +266,9 @@ export default function NotesPanel({
       setTimestamp("");
       setNoteText("");
 
-      console.log("✅ Note saved to database:", data.note);
+      console.info("[Notes] Note saved", { noteId: data.note?.id });
     } catch (error) {
-      console.error("❌ Could not save note:", error);
+      console.error("[Notes] Could not save note", error);
       alert("Could not save note.");
     }
   }
@@ -277,7 +277,9 @@ export default function NotesPanel({
     const note = notes[index];
 
     if (!note?.id) {
-      console.error("Note does not have a database ID:", note);
+      console.error("[Notes] Cannot delete note without a database ID", {
+        noteId: note?.id,
+      });
       return;
     }
 
@@ -296,9 +298,9 @@ export default function NotesPanel({
 
       setNotes(nextNotes);
 
-      console.log("✅ Note deleted from database:", note.id);
+      console.info("[Notes] Note deleted", { noteId: note.id });
     } catch (error) {
-      console.error("❌ Could not delete note:", error);
+      console.error("[Notes] Could not delete note", error);
       alert("Could not delete note.");
     }
   }
@@ -335,7 +337,9 @@ export default function NotesPanel({
     const note = notes[editingIndex];
 
     if (!note?.id) {
-      console.error("Note does not have a database ID:", note);
+      console.error("[Notes] Cannot update note without a database ID", {
+        noteId: note?.id,
+      });
       setSavingEdit(false);
       return;
     }
@@ -370,9 +374,9 @@ export default function NotesPanel({
       setEditingTimestamp("");
       setEditingText("");
 
-      console.log("✅ Note updated in database:", data.note);
+      console.info("[Notes] Note updated", { noteId: data.note?.id });
     } catch (error) {
-      console.error("❌ Could not update note:", error);
+      console.error("[Notes] Could not update note", error);
       alert("Could not update note.");
     } finally {
       setSavingEdit(false);
@@ -456,9 +460,9 @@ export default function NotesPanel({
 
       setNotes(result.notes);
 
-      console.log("✅ Notes imported to database");
+      console.info("[Notes] Notes imported");
     } catch (error) {
-      console.error("❌ Could not import notes:", error);
+      console.error("[Notes] Could not import notes", error);
       alert("Could not import notes.");
     }
 
